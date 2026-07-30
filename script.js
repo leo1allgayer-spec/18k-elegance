@@ -19,6 +19,21 @@ document.querySelector("#hero-next")?.addEventListener("click", () => { showSlid
 dots.forEach((dot) => dot.addEventListener("click", () => { showSlide(Number(dot.dataset.slide)); restartCarousel(); }));
 if (slides.length) restartCarousel();
 
+const mobileMenuButton = document.querySelector(".header .menu");
+const mobileMenuPanel = document.querySelector(".mobile-menu-panel");
+mobileMenuButton?.setAttribute("aria-expanded", "false");
+mobileMenuButton?.addEventListener("click", () => {
+  const willOpen = mobileMenuPanel.hasAttribute("hidden");
+  mobileMenuPanel.toggleAttribute("hidden", !willOpen);
+  mobileMenuPanel.classList.toggle("open", willOpen);
+  mobileMenuButton.setAttribute("aria-expanded", String(willOpen));
+  mobileMenuButton.setAttribute("aria-label", willOpen ? "Fechar menu" : "Abrir menu");
+});
+mobileMenuPanel?.querySelectorAll("a").forEach((link) => link.addEventListener("click", () => {
+  mobileMenuPanel.setAttribute("hidden", "");
+  mobileMenuButton.setAttribute("aria-expanded", "false");
+}));
+
 const money = (value) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const getCart = () => JSON.parse(localStorage.getItem("elegance-cart") || "[]");
 const saveCart = (cart) => {
