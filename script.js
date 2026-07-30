@@ -41,6 +41,13 @@ document.querySelector(".search-toggle")?.addEventListener("click", () => {
 
 const query = new URLSearchParams(location.search);
 const category = query.get("categoria");
+document.querySelectorAll(".store-header nav a, .category-tabs a").forEach((link) => {
+  const linkUrl = new URL(link.getAttribute("href"), location.href);
+  const linkCategory = linkUrl.searchParams.get("categoria");
+  const isActive = category ? linkCategory === category : !linkCategory;
+  link.classList.toggle("active", isActive);
+  if (isActive) link.setAttribute("aria-current", "page");
+});
 if (category) {
   document.querySelectorAll(".catalog-grid article").forEach((card) => {
     card.hidden = card.dataset.category !== category;
