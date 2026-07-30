@@ -65,7 +65,7 @@ document.querySelectorAll(".store-header nav a, .category-tabs a").forEach((link
 });
 if (category) {
   document.querySelectorAll(".catalog-grid article").forEach((card) => {
-    card.hidden = card.dataset.category !== category;
+    card.hidden = !card.dataset.category.split(/\s+/).includes(category);
   });
 }
 document.querySelector("#product-search")?.addEventListener("input", (event) => {
