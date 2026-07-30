@@ -11,3 +11,5 @@
 html,body{max-width:100%;overflow-x:hidden}@media(min-width:641px){.hero-content{left:clamp(38px,8vw,150px);right:auto;width:min(580px,42vw)}.header>nav{padding:0 28px;box-sizing:border-box}}
 
 @media(max-width:640px){.header{grid-template-columns:48px minmax(0,1fr) auto;column-gap:8px}.header>.menu{grid-column:1}.header>.header-logo{grid-column:2;justify-self:center;min-width:0}.header .header-logo img{width:78px!important;max-width:100%}.header>.actions{grid-column:3;justify-self:end;gap:5px}.header .actions>a,.header .actions>button,.header .cart-link{min-width:36px!important;width:36px!important;height:36px!important}}
+
+@media(min-width:641px){.header{height:132px;grid-template-rows:76px 56px}.header .header-logo img{width:118px;max-height:66px;object-fit:contain}}
