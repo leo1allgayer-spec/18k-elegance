@@ -145,3 +145,10 @@ document.querySelector(".text-back")?.addEventListener("click", () => {
   updateCheckout();
 });
 updateCheckout();
+
+document.querySelector(".review-form")?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const feedback = event.currentTarget.querySelector(".review-feedback");
+  feedback.textContent = "Obrigada! Sua avaliação foi registrada para esta apresentação.";
+  event.currentTarget.reset();
+});
