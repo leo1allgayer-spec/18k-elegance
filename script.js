@@ -19,10 +19,20 @@ document.querySelector("#hero-next")?.addEventListener("click", () => { showSlid
 dots.forEach((dot) => dot.addEventListener("click", () => { showSlide(Number(dot.dataset.slide)); restartCarousel(); }));
 if (slides.length) restartCarousel();
 
-const mobileMenuButton = document.querySelector(".header .menu");
-const mobileMenuPanel = document.querySelector(".mobile-menu-panel");
+const mobileMenuButton = document.querySelector(".header .menu, .store-header .menu");
+let mobileMenuPanel = document.querySelector(".mobile-menu-panel");
+if (mobileMenuButton && !mobileMenuPanel) {
+  const sourceNavigation = document.querySelector(".header nav, .store-header nav");
+  mobileMenuPanel = document.createElement("nav");
+  mobileMenuPanel.className = "mobile-menu-panel";
+  mobileMenuPanel.setAttribute("aria-label", "Menu de navegação no celular");
+  mobileMenuPanel.hidden = true;
+  mobileMenuPanel.innerHTML = sourceNavigation?.innerHTML || "";
+  mobileMenuButton.closest("header")?.insertAdjacentElement("afterend", mobileMenuPanel);
+}
 mobileMenuButton?.setAttribute("aria-expanded", "false");
 mobileMenuButton?.addEventListener("click", () => {
+  if (!mobileMenuPanel) return;
   const willOpen = mobileMenuPanel.hasAttribute("hidden");
   mobileMenuPanel.toggleAttribute("hidden", !willOpen);
   mobileMenuPanel.classList.toggle("open", willOpen);
