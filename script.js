@@ -152,3 +152,8 @@ document.querySelector(".review-form")?.addEventListener("submit", (event) => {
   feedback.textContent = "Obrigada! Sua avaliação foi registrada para esta apresentação.";
   event.currentTarget.reset();
 });
+
+document.querySelector(".tracking-form")?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  event.currentTarget.querySelector(".tracking-feedback").textContent = "Código recebido. O acompanhamento real será ativado com a integração do back-end.";
+});
