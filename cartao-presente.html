@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Cartão Presente Digital | Elegance 18K</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@400;500&family=Manrope:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=20260731-11">
+</head>
+<body class="gift-page">
+  <div class="announcement">5% OFF no Pix <span>•</span> Presenteie com Elegance</div>
+  <header class="care-header"><a href="index.html">← Voltar</a><a href="index.html"><img src="assets/logo-oficial.png" alt="Elegance 18K"></a><span></span></header>
+  <main class="gift-shell">
+    <header><p class="eyebrow">CARTÃO PRESENTE DIGITAL</p><h1>Um presente à altura<br>de momentos especiais</h1><p>Escolha o valor, escreva sua mensagem e surpreenda alguém com uma joia Elegance.</p></header>
+    <div class="gift-layout">
+      <aside class="gift-preview"><img src="assets/logo-oficial.png" alt="Elegance 18K"><span>Cartão Presente</span><strong id="gift-preview-value">R$ 50,00</strong><p>Para: <b id="gift-preview-name">uma pessoa especial</b></p><small>Elegance 18K · presente digital</small></aside>
+      <form class="gift-form" id="gift-form">
+        <fieldset><legend>1. Escolha o valor</legend><div class="gift-values"><label><input type="radio" name="valor" value="R$ 50,00" checked><span>R$ 50</span></label><label><input type="radio" name="valor" value="R$ 100,00"><span>R$ 100</span></label><label><input type="radio" name="valor" value="R$ 150,00"><span>R$ 150</span></label><label><input type="radio" name="valor" value="R$ 200,00"><span>R$ 200</span></label><label><input type="radio" name="valor" value="Outro valor"><span>Outro valor</span></label></div><input class="gift-custom" id="gift-custom" type="text" inputmode="decimal" placeholder="Informe o valor desejado" hidden><small>Para outro valor, a equipe confirmará a disponibilidade pelo WhatsApp.</small></fieldset>
+        <fieldset><legend>2. Dados de quem vai receber</legend><div class="gift-fields"><label>Nome<input id="gift-name" required placeholder="Nome do presenteado"></label><label>WhatsApp<input id="gift-phone" required inputmode="tel" placeholder="(51) 99999-9999"></label></div><label>Mensagem<textarea id="gift-message" rows="4" placeholder="Escreva uma mensagem especial"></textarea></label></fieldset>
+        <fieldset><legend>3. Forma de envio</legend><div class="gift-delivery"><label><input type="radio" name="envio" value="Enviar pelo WhatsApp da Elegance" checked><span><b>A Elegance envia</b><small>Enviaremos o cartão diretamente ao WhatsApp informado.</small></span></label><label><input type="radio" name="envio" value="Enviar para quem está comprando"><span><b>Quero enviar pessoalmente</b><small>Você recebe o cartão e encaminha quando desejar.</small></span></label></div></fieldset>
+        <button class="button gift-submit" type="submit">Solicitar cartão pelo WhatsApp</button><small class="gift-note">Nesta apresentação, a solicitação é concluída com a equipe Elegance. O pagamento e a emissão automática serão conectados ao back-end.</small>
+      </form>
+    </div>
+  </main>
+  <script>
+    const form=document.querySelector('#gift-form'),custom=document.querySelector('#gift-custom'),previewValue=document.querySelector('#gift-preview-value'),previewName=document.querySelector('#gift-preview-name');
+    form.addEventListener('change',()=>{const value=form.valor.value;custom.hidden=value!=='Outro valor';previewValue.textContent=value==='Outro valor'?(custom.value||'Valor especial'):value});
+    custom.addEventListener('input',()=>previewValue.textContent=custom.value||'Valor especial');
+    document.querySelector('#gift-name').addEventListener('input',e=>previewName.textContent=e.target.value||'uma pessoa especial');
+    form.addEventListener('submit',e=>{e.preventDefault();const value=form.valor.value==='Outro valor'?(custom.value||'a combinar'):form.valor.value;const text=`Olá! Quero solicitar um Cartão Presente Digital Elegance.%0A%0AValor: ${value}%0APara: ${document.querySelector('#gift-name').value}%0AWhatsApp: ${document.querySelector('#gift-phone').value}%0AMensagem: ${document.querySelector('#gift-message').value||'Sem mensagem'}%0AEnvio: ${form.envio.value}`;window.open('https://wa.me/555194927676?text='+encodeURI(text),'_blank')});
+  </script>
+</body></html>
