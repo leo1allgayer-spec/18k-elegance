@@ -9,6 +9,7 @@ function loadDeferredSlides() {
   slides.slice(1).forEach((slide) => {
     if (slide.dataset.slideImage) slide.style.setProperty("--slide-image", `url('${slide.dataset.slideImage}')`);
   });
+  if (slides.length) restartCarousel();
 }
 window.addEventListener("load", () => {
   if ("requestIdleCallback" in window) requestIdleCallback(loadDeferredSlides, { timeout: 2500 });
