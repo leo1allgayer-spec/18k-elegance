@@ -4,6 +4,17 @@ const current = document.querySelector("#slide-current");
 let activeSlide = 0;
 let carouselTimer;
 
+// Keep non-visible carousel imagery out of the critical mobile loading path.
+function loadDeferredSlides() {
+  slides.slice(1).forEach((slide) => {
+    if (slide.dataset.slideImage) slide.style.setProperty("--slide-image", `url('${slide.dataset.slideImage}')`);
+  });
+}
+window.addEventListener("load", () => {
+  if ("requestIdleCallback" in window) requestIdleCallback(loadDeferredSlides, { timeout: 2500 });
+  else setTimeout(loadDeferredSlides, 1);
+}, { once: true });
+
 function showSlide(index) {
   activeSlide = (index + slides.length) % slides.length;
   slides.forEach((slide, i) => slide.classList.toggle("active", i === activeSlide));
@@ -17,7 +28,6 @@ function restartCarousel() {
 document.querySelector("#hero-prev")?.addEventListener("click", () => { showSlide(activeSlide - 1); restartCarousel(); });
 document.querySelector("#hero-next")?.addEventListener("click", () => { showSlide(activeSlide + 1); restartCarousel(); });
 dots.forEach((dot) => dot.addEventListener("click", () => { showSlide(Number(dot.dataset.slide)); restartCarousel(); }));
-if (slides.length) restartCarousel();
 
 const mobileMenuButton = document.querySelector(".header .menu, .store-header .menu");
 let mobileMenuPanel = document.querySelector(".mobile-menu-panel");

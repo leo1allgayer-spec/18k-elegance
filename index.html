@@ -7,6 +7,8 @@
   <title>Elegance 18K | Semijoias</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" as="image" href="assets/hero-desktop.webp" media="(max-width: 640px)" fetchpriority="high" type="image/webp">
+  <link rel="preload" as="image" href="assets/hero-mobile.webp" media="(min-width: 641px)" fetchpriority="high" type="image/webp">
   <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,500&family=Manrope:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css?v=20260803-01">
 </head>
@@ -53,9 +55,9 @@
   <main>
     <section class="hero" id="novidades">
       <div class="hero-slides" aria-hidden="true">
-        <div class="hero-slide active" style="--slide-image:url('assets/hero-mobile.jpeg')"></div>
-        <div class="hero-slide" style="--slide-image:url('assets/editorial.jpeg')"></div>
-        <div class="hero-slide" style="--slide-image:url('assets/hero-elegance-final.jpeg')"></div>
+        <div class="hero-slide active"><picture><source media="(max-width: 640px)" srcset="assets/hero-desktop.webp" type="image/webp"><img src="assets/hero-mobile.webp" width="853" height="1280" alt="" fetchpriority="high"></picture></div>
+        <div class="hero-slide" data-slide-image="assets/editorial.jpeg"></div>
+        <div class="hero-slide" data-slide-image="assets/hero-elegance-final.jpeg"></div>
       </div>
       <div class="hero-center-logo" aria-hidden="true"><img src="assets/logo-oficial.png" alt=""></div>
       <div class="hero-content">
@@ -89,15 +91,15 @@
         <h2>Categorias</h2>
       </header>
       <div class="shop-category-grid">
-        <a href="catalogo.html?categoria=elegance-baby"><img src="assets/produto-brinco-aura.png" alt="Elegance Baby"><span>Elegance Baby</span></a>
-        <a href="catalogo.html?categoria=elegance-925"><img src="assets/produto-anel-lumiere.png" alt="Elegance 925"><span>Elegance 925</span></a>
-        <a href="catalogo.html?categoria=personalizados"><img src="assets/produto-colar-elise.png" alt="Personalizados"><span>Personalizados</span></a>
-        <a href="catalogo.html?categoria=fotogravacao"><img src="assets/produto-colar-elise.png" alt="Fotogravação"><span>Fotogravação</span></a>
-        <a href="catalogo.html?categoria=brincos"><img src="assets/produto-brinco-aura.png" alt="Brincos"><span>Brincos</span></a>
-        <a href="catalogo.html?categoria=pulseiras"><img src="assets/produto-pulseira-essencia.png" alt="Pulseiras"><span>Pulseiras</span></a>
-        <a href="catalogo.html?categoria=pingentes"><img src="assets/produto-colar-elise.png" alt="Pingentes"><span>Pingentes</span></a>
-        <a href="catalogo.html?categoria=gargantilhas"><img src="assets/produto-colar-elise.png" alt="Gargantilhas"><span>Gargantilhas</span></a>
-        <a href="catalogo.html?categoria=linha-masculina"><img src="assets/produto-anel-lumiere.png" alt="Linha masculina"><span>Linha masculina</span></a>
+        <a href="catalogo.html?categoria=elegance-baby"><img src="assets/produto-brinco-aura.webp" alt="Elegance Baby" loading="lazy" decoding="async"><span>Elegance Baby</span></a>
+        <a href="catalogo.html?categoria=elegance-925"><img src="assets/produto-anel-lumiere.webp" alt="Elegance 925" loading="lazy" decoding="async"><span>Elegance 925</span></a>
+        <a href="catalogo.html?categoria=personalizados"><img src="assets/produto-colar-elise.webp" alt="Personalizados" loading="lazy" decoding="async"><span>Personalizados</span></a>
+        <a href="catalogo.html?categoria=fotogravacao"><img src="assets/produto-colar-elise.webp" alt="Fotogravação" loading="lazy" decoding="async"><span>Fotogravação</span></a>
+        <a href="catalogo.html?categoria=brincos"><img src="assets/produto-brinco-aura.webp" alt="Brincos" loading="lazy" decoding="async"><span>Brincos</span></a>
+        <a href="catalogo.html?categoria=pulseiras"><img src="assets/produto-pulseira-essencia.webp" alt="Pulseiras" loading="lazy" decoding="async"><span>Pulseiras</span></a>
+        <a href="catalogo.html?categoria=pingentes"><img src="assets/produto-colar-elise.webp" alt="Pingentes" loading="lazy" decoding="async"><span>Pingentes</span></a>
+        <a href="catalogo.html?categoria=gargantilhas"><img src="assets/produto-colar-elise.webp" alt="Gargantilhas" loading="lazy" decoding="async"><span>Gargantilhas</span></a>
+        <a href="catalogo.html?categoria=linha-masculina"><img src="assets/produto-anel-lumiere.webp" alt="Linha masculina" loading="lazy" decoding="async"><span>Linha masculina</span></a>
       </div>
     </section>
 
