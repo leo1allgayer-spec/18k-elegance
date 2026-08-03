@@ -52,3 +52,6 @@ html,body{max-width:100%;overflow-x:hidden}@media(min-width:641px){.hero-content
 .p2{background-image:url("assets/produto-anel-lumiere.webp")}
 .p3{background-image:url("assets/produto-colar-elise.webp")}
 .p4{background-image:url("assets/produto-pulseira-essencia.webp")}
+
+/* Keep the complete lower gold stroke visible in the cropped monogram. */
+.hero-center-logo{aspect-ratio:.66}
