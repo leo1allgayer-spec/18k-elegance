@@ -47,6 +47,7 @@ html,body{max-width:100%;overflow-x:hidden}@media(min-width:641px){.hero-content
 .hero-slide:first-child{background-image:none!important}
 .hero-slide>picture,.hero-slide>picture>img{position:absolute;inset:0;display:block;width:100%;height:100%}
 .hero-slide>picture>img{object-fit:cover;object-position:center}
+@media(min-width:641px){.hero-slide>picture>img{left:auto;right:0;width:55%;height:100%;object-position:center 48%}}
 .p1{background-image:url("assets/produto-brinco-aura.webp")}
 .p2{background-image:url("assets/produto-anel-lumiere.webp")}
 .p3{background-image:url("assets/produto-colar-elise.webp")}
