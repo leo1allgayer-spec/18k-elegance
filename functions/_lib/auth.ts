@@ -2,7 +2,8 @@ import type { Env, SessionCustomer } from "./types";
 import { parseCookies } from "./http";
 
 const encoder = new TextEncoder();
-const ITERATIONS = 210_000;
+// Custo compatível com o limite de CPU do Cloudflare Pages gratuito.
+const ITERATIONS = 10_000;
 
 function toBase64(bytes: Uint8Array<ArrayBufferLike>): string {
   let binary = "";
