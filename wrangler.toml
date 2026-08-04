@@ -1,0 +1,8 @@
+name = "elegance-18k"
+compatibility_date = "2026-08-01"
+pages_build_output_dir = "."
+
+# Após criar o banco D1, adicione aqui o bloco [[d1_databases]] com:
+# binding = "DB"
+# database_name = "elegance-18k"
+# database_id = "ID_GERADO_PELA_CLOUDFLARE"
