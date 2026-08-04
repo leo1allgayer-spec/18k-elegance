@@ -5,6 +5,47 @@ import { clearSessionCookie, createSession, currentCustomer, deleteCurrentSessio
 type RegisterBody = { name?: string; email?: string; phone?: string; birth_date?: string; password?: string };
 type LoginBody = { email?: string; password?: string };
 
+async function requireAdmin(request: Request, env: Env) {
+  const customer = await currentCustomer(request, env);
+  return customer?.role === "admin" ? customer : null;
+}
+
+async function adminDashboard(env: Env): Promise<Response> {
+  const [products, orders, customers, revenue, recentOrders] = await Promise.all([
+    env.DB.prepare("SELECT COUNT(*) AS total FROM products WHERE active = 1").first<{ total: number }>(),
+    env.DB.prepare("SELECT COUNT(*) AS total FROM orders").first<{ total: number }>(),
+    env.DB.prepare("SELECT COUNT(*) AS total FROM customers WHERE active = 1").first<{ total: number }>(),
+    env.DB.prepare("SELECT COALESCE(SUM(total_cents), 0) AS total FROM orders WHERE status NOT IN ('cancelled','refunded')").first<{ total: number }>(),
+    env.DB.prepare(`SELECT o.id, o.order_number, o.status, o.total_cents, o.created_at, c.name AS customer_name
+      FROM orders o JOIN customers c ON c.id = o.customer_id ORDER BY o.created_at DESC LIMIT 8`).all(),
+  ]);
+  return json({ ok: true, stats: { products: products?.total || 0, orders: orders?.total || 0, customers: customers?.total || 0, revenue_cents: revenue?.total || 0 }, recent_orders: recentOrders.results });
+}
+
+async function adminProducts(env: Env): Promise<Response> {
+  const result = await env.DB.prepare(`SELECT p.id, p.name, p.sku, p.price_cents, p.active, p.featured,
+    c.name AS category_name, COALESCE(SUM(v.stock), 0) AS stock
+    FROM products p LEFT JOIN categories c ON c.id = p.category_id
+    LEFT JOIN product_variants v ON v.product_id = p.id AND v.active = 1
+    GROUP BY p.id ORDER BY p.created_at DESC LIMIT 200`).all();
+  return json({ ok: true, products: result.results });
+}
+
+async function adminOrders(env: Env): Promise<Response> {
+  const result = await env.DB.prepare(`SELECT o.id, o.order_number, o.status, o.total_cents, o.shipping_method,
+    o.tracking_code, o.created_at, c.name AS customer_name, c.email AS customer_email
+    FROM orders o JOIN customers c ON c.id = o.customer_id ORDER BY o.created_at DESC LIMIT 200`).all();
+  return json({ ok: true, orders: result.results });
+}
+
+async function adminCustomers(env: Env): Promise<Response> {
+  const result = await env.DB.prepare(`SELECT c.id, c.name, c.email, c.phone, c.birth_date, c.active, c.created_at,
+    COUNT(o.id) AS order_count, COALESCE(SUM(o.total_cents), 0) AS total_spent_cents
+    FROM customers c LEFT JOIN orders o ON o.customer_id = c.id
+    GROUP BY c.id ORDER BY c.created_at DESC LIMIT 200`).all();
+  return json({ ok: true, customers: result.results });
+}
+
 function pathParts(request: Request): string[] {
   const path = new URL(request.url).pathname.replace(/^\/api\/?/, "");
   return path ? path.split("/").map(decodeURIComponent) : [];
@@ -99,6 +140,14 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (method === "GET" && parts.join("/") === "auth/me") {
     const customer = await currentCustomer(request, env);
     return customer ? json({ ok: true, customer }) : apiError("Faça login para continuar.", 401, "UNAUTHENTICATED");
+  }
+  if (parts[0] === "admin") {
+    const admin = await requireAdmin(request, env);
+    if (!admin) return apiError("Acesso restrito à administração.", 403, "FORBIDDEN");
+    if (method === "GET" && parts[1] === "dashboard") return adminDashboard(env);
+    if (method === "GET" && parts[1] === "products") return adminProducts(env);
+    if (method === "GET" && parts[1] === "orders") return adminOrders(env);
+    if (method === "GET" && parts[1] === "customers") return adminCustomers(env);
   }
   return apiError("Rota não encontrada.", 404, "NOT_FOUND");
 }
