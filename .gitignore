@@ -1,18 +1,2 @@
-# Arquivos locais e temporários
-tmp/
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# Editores
-.vscode/
-.idea/
-
-# Logs e dependências futuras
-*.log
+.wrangler/
 node_modules/
-
-# Variáveis locais
-.env
-.env.*
-!.env.example
