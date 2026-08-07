@@ -4,6 +4,18 @@ import { clearSessionCookie, createSession, currentCustomer, deleteCurrentSessio
 
 type RegisterBody = { name?: string; email?: string; phone?: string; birth_date?: string; password?: string };
 type LoginBody = { email?: string; password?: string };
+type ProductBody = {
+  name?: string; category_id?: number | null; sku?: string; description?: string;
+  price_cents?: number; pix_price_cents?: number | null; stock?: number;
+  image_url?: string; active?: boolean; featured?: boolean; finish?: string;
+  weight_grams?: number; width_cm?: number; height_cm?: number; length_cm?: number;
+};
+type CategoryBody = { name?: string; description?: string; sort_order?: number; active?: boolean };
+type CouponBody = { code?: string; type?: "percent" | "fixed"; value?: number; minimum_cents?: number; starts_at?: string | null; expires_at?: string | null; max_uses?: number | null; active?: boolean };
+
+const slugify = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+const integer = (value: unknown, fallback = 0) => Number.isFinite(Number(value)) ? Math.round(Number(value)) : fallback;
+const flag = (value: unknown, fallback = true) => value === undefined ? (fallback ? 1 : 0) : (value ? 1 : 0);
 
 async function requireAdmin(request: Request, env: Env) {
   const customer = await currentCustomer(request, env);
@@ -23,12 +35,128 @@ async function adminDashboard(env: Env): Promise<Response> {
 }
 
 async function adminProducts(env: Env): Promise<Response> {
-  const result = await env.DB.prepare(`SELECT p.id, p.name, p.sku, p.price_cents, p.active, p.featured,
-    c.name AS category_name, COALESCE(SUM(v.stock), 0) AS stock
+  const result = await env.DB.prepare(`SELECT p.id, p.name, p.category_id, p.sku, p.description, p.price_cents, p.pix_price_cents,
+    p.weight_grams, p.width_cm, p.height_cm, p.length_cm, p.active, p.featured, c.name AS category_name,
+    (SELECT url FROM product_images WHERE product_id = p.id ORDER BY sort_order, id LIMIT 1) AS image_url,
+    COALESCE(SUM(v.stock), 0) AS stock
     FROM products p LEFT JOIN categories c ON c.id = p.category_id
     LEFT JOIN product_variants v ON v.product_id = p.id AND v.active = 1
     GROUP BY p.id ORDER BY p.created_at DESC LIMIT 200`).all();
   return json({ ok: true, products: result.results });
+}
+
+async function adminCategories(env: Env): Promise<Response> {
+  const result = await env.DB.prepare(`SELECT c.id, c.name, c.slug, c.description, c.sort_order, c.active,
+    COUNT(p.id) AS product_count FROM categories c LEFT JOIN products p ON p.category_id = c.id
+    GROUP BY c.id ORDER BY c.sort_order, c.name`).all();
+  return json({ ok: true, categories: result.results });
+}
+
+async function uniqueSlug(env: Env, table: "products" | "categories", name: string, exceptId?: number) {
+  const base = slugify(name) || `item-${Date.now()}`;
+  let slug = base;
+  for (let suffix = 2; suffix < 100; suffix++) {
+    const found = await env.DB.prepare(`SELECT id FROM ${table} WHERE slug = ?${exceptId ? " AND id != ?" : ""}`)
+      .bind(...(exceptId ? [slug, exceptId] : [slug])).first();
+    if (!found) return slug;
+    slug = `${base}-${suffix}`;
+  }
+  return `${base}-${Date.now()}`;
+}
+
+async function saveProduct(request: Request, env: Env, id?: number): Promise<Response> {
+  const body = await readJson<ProductBody>(request);
+  const name = body.name?.trim() || "";
+  const sku = body.sku?.trim().toUpperCase() || "";
+  const price = integer(body.price_cents, -1);
+  const stock = integer(body.stock, 0);
+  if (name.length < 2) return apiError("Informe o nome do produto.");
+  if (!sku) return apiError("Informe o SKU do produto.");
+  if (price < 0) return apiError("Informe um preço válido.");
+  if (stock < 0) return apiError("O estoque não pode ser negativo.");
+  if (body.category_id) {
+    const category = await env.DB.prepare("SELECT id FROM categories WHERE id = ?").bind(integer(body.category_id)).first();
+    if (!category) return apiError("Categoria não encontrada.");
+  }
+  const duplicate = await env.DB.prepare(`SELECT id FROM products WHERE sku = ?${id ? " AND id != ?" : ""}`)
+    .bind(...(id ? [sku, id] : [sku])).first();
+  if (duplicate) return apiError("Já existe um produto com este SKU.", 409, "SKU_EXISTS");
+  const slug = await uniqueSlug(env, "products", name, id);
+  const values = [body.category_id ? integer(body.category_id) : null, name, slug, sku, body.description?.trim() || null,
+    price, body.pix_price_cents == null ? null : integer(body.pix_price_cents), integer(body.weight_grams), Number(body.width_cm) || 0,
+    Number(body.height_cm) || 0, Number(body.length_cm) || 0, flag(body.featured, false), flag(body.active)];
+  let productId = id;
+  if (id) {
+    const exists = await env.DB.prepare("SELECT id FROM products WHERE id = ?").bind(id).first();
+    if (!exists) return apiError("Produto não encontrado.", 404, "NOT_FOUND");
+    await env.DB.prepare(`UPDATE products SET category_id=?, name=?, slug=?, sku=?, description=?, price_cents=?, pix_price_cents=?,
+      weight_grams=?, width_cm=?, height_cm=?, length_cm=?, featured=?, active=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(...values, id).run();
+  } else {
+    const result = await env.DB.prepare(`INSERT INTO products(category_id,name,slug,sku,description,price_cents,pix_price_cents,
+      weight_grams,width_cm,height_cm,length_cm,featured,active) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(...values).run();
+    productId = Number(result.meta.last_row_id);
+  }
+  const variant = await env.DB.prepare("SELECT id FROM product_variants WHERE product_id = ? ORDER BY id LIMIT 1").bind(productId).first<{id:number}>();
+  if (variant) await env.DB.prepare("UPDATE product_variants SET name=?, sku=?, finish=?, price_cents=?, stock=?, active=?, updated_at=CURRENT_TIMESTAMP WHERE id=?")
+    .bind("Padrão", `${sku}-PADRAO`, body.finish?.trim() || "Dourado 18K", price, stock, flag(body.active), variant.id).run();
+  else await env.DB.prepare("INSERT INTO product_variants(product_id,name,sku,finish,price_cents,stock,active) VALUES(?,?,?,?,?,?,?)")
+    .bind(productId, "Padrão", `${sku}-PADRAO`, body.finish?.trim() || "Dourado 18K", price, stock, flag(body.active)).run();
+  if (body.image_url !== undefined) {
+    await env.DB.prepare("DELETE FROM product_images WHERE product_id = ?").bind(productId).run();
+    if (body.image_url.trim()) await env.DB.prepare("INSERT INTO product_images(product_id,url,alt_text,sort_order) VALUES(?,?,?,0)")
+      .bind(productId, body.image_url.trim(), name).run();
+  }
+  return json({ ok: true, id: productId, slug }, id ? 200 : 201);
+}
+
+async function deleteProduct(env: Env, id: number): Promise<Response> {
+  const result = await env.DB.prepare("UPDATE products SET active=0, updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(id).run();
+  return result.meta.changes ? json({ ok: true }) : apiError("Produto não encontrado.", 404, "NOT_FOUND");
+}
+
+async function saveCategory(request: Request, env: Env, id?: number): Promise<Response> {
+  const body = await readJson<CategoryBody>(request);
+  const name = body.name?.trim() || "";
+  if (name.length < 2) return apiError("Informe o nome da categoria.");
+  const slug = await uniqueSlug(env, "categories", name, id);
+  if (id) {
+    const result = await env.DB.prepare("UPDATE categories SET name=?,slug=?,description=?,sort_order=?,active=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+      .bind(name, slug, body.description?.trim() || null, integer(body.sort_order), flag(body.active), id).run();
+    return result.meta.changes ? json({ ok: true, id, slug }) : apiError("Categoria não encontrada.", 404, "NOT_FOUND");
+  }
+  const result = await env.DB.prepare("INSERT INTO categories(name,slug,description,sort_order,active) VALUES(?,?,?,?,?)")
+    .bind(name, slug, body.description?.trim() || null, integer(body.sort_order), flag(body.active)).run();
+  return json({ ok: true, id: Number(result.meta.last_row_id), slug }, 201);
+}
+
+async function adminCoupons(env: Env): Promise<Response> {
+  const result = await env.DB.prepare("SELECT * FROM coupons ORDER BY id DESC LIMIT 200").all();
+  return json({ ok: true, coupons: result.results });
+}
+
+async function saveCoupon(request: Request, env: Env): Promise<Response> {
+  const body = await readJson<CouponBody>(request);
+  const code = body.code?.trim().toUpperCase() || "";
+  if (!code || !["percent", "fixed"].includes(body.type || "")) return apiError("Informe código e tipo do cupom.");
+  if (integer(body.value) <= 0 || (body.type === "percent" && integer(body.value) > 100)) return apiError("Informe um desconto válido.");
+  try {
+    const result = await env.DB.prepare(`INSERT INTO coupons(code,type,value,minimum_cents,starts_at,expires_at,max_uses,active)
+      VALUES(?,?,?,?,?,?,?,?)`).bind(code, body.type, integer(body.value), integer(body.minimum_cents), body.starts_at || null,
+      body.expires_at || null, body.max_uses == null ? null : integer(body.max_uses), flag(body.active)).run();
+    return json({ ok: true, id: Number(result.meta.last_row_id) }, 201);
+  } catch (error) {
+    if (String(error).includes("UNIQUE")) return apiError("Este cupom já existe.", 409, "CODE_EXISTS");
+    throw error;
+  }
+}
+
+async function updateOrder(request: Request, env: Env, id: number): Promise<Response> {
+  const body = await readJson<{ status?: string; tracking_code?: string | null }>(request);
+  const statuses = ["pending_payment","paid","preparing","shipped","delivered","cancelled","refunded"];
+  if (!body.status || !statuses.includes(body.status)) return apiError("Status do pedido inválido.");
+  const result = await env.DB.prepare("UPDATE orders SET status=?,tracking_code=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+    .bind(body.status, body.tracking_code?.trim() || null, id).run();
+  return result.meta.changes ? json({ ok: true }) : apiError("Pedido não encontrado.", 404, "NOT_FOUND");
 }
 
 async function adminOrders(env: Env): Promise<Response> {
@@ -146,8 +274,17 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (!admin) return apiError("Acesso restrito à administração.", 403, "FORBIDDEN");
     if (method === "GET" && parts[1] === "dashboard") return adminDashboard(env);
     if (method === "GET" && parts[1] === "products") return adminProducts(env);
+    if (method === "POST" && parts[1] === "products" && !parts[2]) return saveProduct(request, env);
+    if (method === "PUT" && parts[1] === "products" && parts[2]) return saveProduct(request, env, integer(parts[2]));
+    if (method === "DELETE" && parts[1] === "products" && parts[2]) return deleteProduct(env, integer(parts[2]));
+    if (method === "GET" && parts[1] === "categories") return adminCategories(env);
+    if (method === "POST" && parts[1] === "categories" && !parts[2]) return saveCategory(request, env);
+    if (method === "PUT" && parts[1] === "categories" && parts[2]) return saveCategory(request, env, integer(parts[2]));
     if (method === "GET" && parts[1] === "orders") return adminOrders(env);
+    if (method === "PATCH" && parts[1] === "orders" && parts[2]) return updateOrder(request, env, integer(parts[2]));
     if (method === "GET" && parts[1] === "customers") return adminCustomers(env);
+    if (method === "GET" && parts[1] === "coupons") return adminCoupons(env);
+    if (method === "POST" && parts[1] === "coupons") return saveCoupon(request, env);
   }
   return apiError("Rota não encontrada.", 404, "NOT_FOUND");
 }

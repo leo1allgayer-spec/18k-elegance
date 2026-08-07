@@ -8,7 +8,7 @@ function redirect(location: string, cookie?: string): Response {
 }
 
 function loginSuccess(cookie: string): Response {
-  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="1;url=/admin?painel=1"><title>Abrindo painel</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#030b18;color:#d7b774;font:14px Arial,sans-serif;text-align:center}strong{display:block;margin-bottom:10px;font-size:20px}a{color:#d7b774}</style></head><body><div><strong>Acesso confirmado</strong><p>Abrindo o painel administrativo…</p><a href="/admin?painel=1">Continuar</a></div><script>setTimeout(function(){location.replace('/admin?painel=1')},350)</script></body></html>`;
+  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="1;url=/admin-demo.html"><title>Abrindo painel</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#030b18;color:#d7b774;font:14px Arial,sans-serif;text-align:center}strong{display:block;margin-bottom:10px;font-size:20px}a{color:#d7b774}</style></head><body><div><strong>Acesso confirmado</strong><p>Abrindo o painel administrativo…</p><a href="/admin-demo.html">Continuar</a></div><script>setTimeout(function(){location.replace('/admin-demo.html')},350)</script></body></html>`;
   return new Response(html, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Set-Cookie": cookie } });
 }
 
