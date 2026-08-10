@@ -31,3 +31,8 @@
 .payment-return-actions{display:flex;align-items:center;justify-content:center;gap:24px;flex-wrap:wrap}
 .payment-return-actions>a:not(.button){color:#d7b774;text-decoration:underline}
 @media(max-width:600px){.payment-return>section{padding:38px 22px}.checkout-message{order:3;flex-basis:100%;text-align:center}}
+.shipping-choice .shipping-coming-soon{border-style:dashed;opacity:.72}
+.shipping-choice .shipping-coming-soon input{accent-color:#c59a47}
+.shipping-choice .shipping-coming-soon b em{display:inline-block;margin-left:8px;padding:3px 6px;background:#c59a47;color:#050a13;font-size:8px;font-style:normal;letter-spacing:.08em;text-transform:uppercase}
+.shipping-choice .shipping-coming-soon strong{color:#e0bd78}
+.shipping-help{margin:12px 0 0;color:#9aa5b6;font-size:10px;line-height:1.5}
