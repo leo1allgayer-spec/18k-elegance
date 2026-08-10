@@ -1,0 +1,44 @@
+.icon-btn {
+  min-height: 38px;
+  padding: 0 15px;
+  border: 1px solid #c59a47;
+  background: #050a13;
+  color: #e0bd78;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  cursor: pointer;
+  transition: background .2s, color .2s, border-color .2s, transform .2s;
+}
+
+.icon-btn:hover,
+.icon-btn:focus-visible {
+  background: #c59a47;
+  color: #050a13;
+  outline: 0;
+  transform: translateY(-1px);
+}
+
+.icon-btn[data-delete-product] {
+  border-color: #8e4b4b;
+  color: #f0a2a2;
+}
+
+.icon-btn[data-delete-product]:hover,
+.icon-btn[data-delete-product]:focus-visible {
+  border-color: #b85c5c;
+  background: #7d3030;
+  color: #fff;
+}
+
+.icon-btn:disabled {
+  border-color: #526074;
+  background: #111a29;
+  color: #778398;
+  cursor: not-allowed;
+  transform: none;
+}
+
+@media (max-width: 760px) {
+  .icon-btn { min-height: 42px; padding: 0 16px; font-size: 12px; }
+}
