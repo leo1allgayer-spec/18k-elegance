@@ -122,8 +122,13 @@ document.querySelector(".add-cart")?.addEventListener("click", (event) => {
   const qty = Number(document.querySelector(".quantity span")?.textContent || 1);
   const cart = getCart();
   const existing = cart.find((item) => item.name === button.dataset.product);
-  if (existing) existing.qty += qty;
-  else cart.push({ name: button.dataset.product, price: Number(button.dataset.price), image: button.dataset.image, qty });
+  if (existing) {
+    existing.qty += qty;
+    existing.product_id = Number(button.dataset.id) || existing.product_id || null;
+    existing.variant_id = Number(button.dataset.variant) || existing.variant_id || null;
+  }
+  else cart.push({ name: button.dataset.product, price: Number(button.dataset.price), image: button.dataset.image, qty,
+    product_id: Number(button.dataset.id) || null, variant_id: Number(button.dataset.variant) || null });
   saveCart(cart);
   button.textContent = "Adicionado à sacola ✓";
   setTimeout(() => { button.textContent = "Adicionar à sacola"; }, 1800);
@@ -157,14 +162,11 @@ function updateCheckout() {
   if (next) next.textContent = checkoutStep === 3 ? "Confirmar pedido" : "Continuar";
   document.querySelector(".checkout-actions")?.toggleAttribute("hidden", checkoutStep === 4);
 }
-document.querySelector(".step-next")?.addEventListener("click", () => {
-  checkoutStep = Math.min(4, checkoutStep + 1);
-  updateCheckout();
-});
-document.querySelector(".text-back")?.addEventListener("click", () => {
-  checkoutStep = Math.max(1, checkoutStep - 1);
-  updateCheckout();
-});
+window.eleganceCheckout = {
+  get step() { return checkoutStep; },
+  next() { checkoutStep = Math.min(4, checkoutStep + 1); updateCheckout(); },
+  back() { checkoutStep = Math.max(1, checkoutStep - 1); updateCheckout(); },
+};
 updateCheckout();
 
 document.querySelector(".review-form")?.addEventListener("submit", (event) => {

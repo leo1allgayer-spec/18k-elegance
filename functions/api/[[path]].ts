@@ -1,6 +1,7 @@
 import type { Env } from "../_lib/types";
 import { apiError, json, normalizeEmail, readJson } from "../_lib/http";
 import { clearSessionCookie, createSession, currentCustomer, deleteCurrentSession, hashPassword, sessionCookie, verifyPassword } from "../_lib/auth";
+import { createMercadoPagoCheckout, mercadoPagoWebhook, publicPaymentStatus } from "../_lib/mercado-pago";
 
 type RegisterBody = { name?: string; email?: string; phone?: string; birth_date?: string; password?: string };
 type LoginBody = { email?: string; password?: string };
@@ -259,6 +260,9 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (method === "GET" && parts[0] === "categories") return categories(env);
   if (method === "GET" && parts[0] === "products" && !parts[1]) return products(request, env);
   if (method === "GET" && parts[0] === "products" && parts[1]) return productBySlug(parts[1], env);
+  if (method === "POST" && parts.join("/") === "checkout/mercado-pago") return createMercadoPagoCheckout(request, env);
+  if (method === "POST" && parts.join("/") === "payments/mercado-pago/webhook") return mercadoPagoWebhook(request, env);
+  if (method === "GET" && parts.join("/") === "payments/status") return publicPaymentStatus(request, env);
   if (method === "POST" && parts.join("/") === "auth/register") return register(request, env);
   if (method === "POST" && parts.join("/") === "auth/login") return login(request, env);
   if (method === "POST" && parts.join("/") === "auth/logout") {
