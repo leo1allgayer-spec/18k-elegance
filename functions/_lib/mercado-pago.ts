@@ -25,6 +25,7 @@ type MercadoPagoPayment = {
   id: number; status: string; transaction_amount: number; external_reference?: string;
   metadata?: { order_id?: number; order_number?: string };
 };
+type MercadoPagoMethod = { id?: string; name?: string; payment_type_id?: string; status?: string };
 
 const encoder = new TextEncoder();
 const cents = (value: number) => Math.round(Number(value) * 100);
@@ -244,4 +245,15 @@ export async function publicPaymentStatus(request: Request, env: Env): Promise<R
   const order = await env.DB.prepare(`SELECT order_number,status,total_cents,shipping_method,tracking_code,created_at
     FROM orders WHERE order_number=?`).bind(orderNumber).first();
   return order ? json({ ok: true, order }) : apiError("Pedido não encontrado.", 404, "NOT_FOUND");
+}
+
+export async function mercadoPagoDiagnostic(env: Env): Promise<Response> {
+  if (!env.MERCADO_PAGO_ACCESS_TOKEN) return apiError("O Mercado Pago ainda não está configurado.", 503, "PAYMENT_NOT_CONFIGURED");
+  try {
+    const methods = await mercadoPago<MercadoPagoMethod[]>(env, "/v1/payment_methods");
+    const pix = methods.find(method => method.id === "pix" || method.payment_type_id === "bank_transfer");
+    return json({ ok: true, pix: { available: Boolean(pix), status: pix?.status || null, id: pix?.id || null }, checkout_pro: true });
+  } catch {
+    return apiError("Não foi possível consultar os meios de pagamento.", 502, "PAYMENT_PROVIDER_ERROR");
+  }
 }
