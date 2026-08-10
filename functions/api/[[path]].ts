@@ -256,7 +256,16 @@ async function login(request: Request, env: Env): Promise<Response> {
 async function route(request: Request, env: Env): Promise<Response> {
   const method = request.method.toUpperCase();
   const parts = pathParts(request);
-  if (method === "GET" && parts[0] === "health") return json({ ok: true, service: "elegance-api", database: "connected" });
+  if (method === "GET" && parts[0] === "health") return json({
+    ok: true,
+    service: "elegance-api",
+    database: "connected",
+    integrations: {
+      mercado_pago: Boolean(env.MERCADO_PAGO_ACCESS_TOKEN),
+      mercado_pago_webhook: Boolean(env.MERCADO_PAGO_WEBHOOK_SECRET),
+      correios: Boolean(env.CORREIOS_API_TOKEN),
+    },
+  });
   if (method === "GET" && parts[0] === "categories") return categories(env);
   if (method === "GET" && parts[0] === "products" && !parts[1]) return products(request, env);
   if (method === "GET" && parts[0] === "products" && parts[1]) return productBySlug(parts[1], env);
