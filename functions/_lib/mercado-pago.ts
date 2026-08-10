@@ -1,12 +1,13 @@
 import type { Env } from "./types";
 import { apiError, json, normalizeEmail, readJson } from "./http";
 import { hashPassword } from "./auth";
+import { calculateCorreiosQuotes } from "./correios";
 
 type CheckoutItem = { product_id?: number; variant_id?: number; quantity?: number };
 type CheckoutBody = {
   customer?: { name?: string; email?: string; phone?: string; cpf?: string };
   shipping?: {
-    method?: "correios" | "motoboy" | "pickup";
+    method?: "correios" | "motoboy" | "pickup"; service_code?: string;
     postal_code?: string; street?: string; number?: string; complement?: string;
     neighborhood?: string; city?: string; state?: string;
   };
@@ -126,7 +127,17 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
   try { discount = await calculateDiscount(env, body.coupon, subtotal); }
   catch { return apiError("O cupom informado não é válido.", 400, "INVALID_COUPON"); }
   const shippingMethod = body.shipping?.method || "pickup";
-  const shippingCents = 0;
+  let shippingCents = 0;
+  if (shippingMethod === "correios") {
+    try {
+      const quotes = await calculateCorreiosQuotes(env, body.shipping?.postal_code || "", body.items || []);
+      const selected = quotes.find(quote => quote.code === body.shipping?.service_code);
+      if (!selected) return apiError("Selecione PAC ou SEDEX novamente.", 400, "INVALID_SHIPPING_QUOTE");
+      shippingCents = selected.price_cents;
+    } catch {
+      return apiError("Não foi possível confirmar o frete dos Correios.", 502, "SHIPPING_PROVIDER_ERROR");
+    }
+  }
   const total = subtotal - discount.cents + shippingCents;
   if (total < 1) return apiError("O total do pedido é inválido.");
   const id = await customerId(env, customer);
@@ -142,7 +153,10 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
   ]);
   const origin = new URL(request.url).origin;
   const preferenceBody = {
-    items: products.map(item => ({ id: String(item.product_id), title: item.name, quantity: item.stock, currency_id: "BRL", unit_price: item.unit_price_cents / 100 })),
+    items: [
+      ...products.map(item => ({ id: String(item.product_id), title: item.name, quantity: item.stock, currency_id: "BRL", unit_price: item.unit_price_cents / 100 })),
+      ...(shippingCents ? [{ id: "shipping", title: "Frete Correios", quantity: 1, currency_id: "BRL", unit_price: shippingCents / 100 }] : []),
+    ],
     payer: { name: customer.name!.trim(), email, phone: { number: digits(customer.phone || "") }, identification: { type: "CPF", number: digits(customer.cpf || "") } },
     external_reference: orderNumber,
     metadata: { order_id: orderId, order_number: orderNumber },
