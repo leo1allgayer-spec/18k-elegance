@@ -4,10 +4,36 @@ import { apiError, json, readJson } from "./http";
 type CartItem = { product_id?: number; variant_id?: number; quantity?: number };
 type PackageRow = { weight_grams: number; width_cm: number; height_cm: number; length_cm: number; stock: number };
 export type ShippingQuote = { code: string; name: string; price_cents: number; delivery_days: number };
+type CorreiosTokenResponse = { token?: string; expiraEm?: string };
+
+let tokenCache: { value: string; expiresAt: number } | null = null;
 
 const digits = (value: string) => value.replace(/\D/g, "");
 const amount = (value: unknown) => Math.round(Number(String(value || "0").replace(".", "").replace(",", ".")) * 100);
-export const correiosConfigured = (env: Env) => Boolean(env.CORREIOS_API_TOKEN && digits(env.CORREIOS_ORIGIN_ZIP || "").length === 8 && env.CORREIOS_PAC_CODE && env.CORREIOS_SEDEX_CODE);
+const hasAutomaticCredentials = (env: Env) => Boolean(env.CORREIOS_USER && env.CORREIOS_ACCESS_CODE && env.CORREIOS_POSTING_CARD && env.CORREIOS_CONTRACT && env.CORREIOS_DR);
+export const correiosConfigured = (env: Env) => Boolean((env.CORREIOS_API_TOKEN || hasAutomaticCredentials(env)) && digits(env.CORREIOS_ORIGIN_ZIP || "").length === 8 && env.CORREIOS_PAC_CODE && env.CORREIOS_SEDEX_CODE);
+
+async function correiosToken(env: Env) {
+  if (tokenCache && tokenCache.expiresAt > Date.now() + 30 * 60 * 1000) return tokenCache.value;
+  if (!hasAutomaticCredentials(env)) {
+    if (env.CORREIOS_API_TOKEN) return env.CORREIOS_API_TOKEN;
+    throw new Error("CORREIOS_NOT_CONFIGURED");
+  }
+  const basic = btoa(`${env.CORREIOS_USER}:${env.CORREIOS_ACCESS_CODE}`);
+  const response = await fetch("https://api.correios.com.br/token/v1/autentica/cartaopostagem", {
+    method: "POST",
+    headers: { Authorization: `Basic ${basic}`, Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ numero: env.CORREIOS_POSTING_CARD, contrato: env.CORREIOS_CONTRACT, dr: Number(env.CORREIOS_DR) }),
+  });
+  const payload: CorreiosTokenResponse = await response.json<CorreiosTokenResponse>().catch(() => ({}));
+  if (!response.ok || !payload.token) {
+    console.error(JSON.stringify({ event: "correios_token_error", status: response.status }));
+    throw new Error(response.status === 401 ? "CORREIOS_AUTH" : "CORREIOS_PROVIDER");
+  }
+  const parsedExpiry = Date.parse(payload.expiraEm || "");
+  tokenCache = { value: payload.token, expiresAt: Number.isFinite(parsedExpiry) ? parsedExpiry : Date.now() + 23 * 60 * 60 * 1000 };
+  return tokenCache.value;
+}
 
 async function packageFor(env: Env, items: CartItem[]) {
   let weight = 0, width = 11, height = 2, length = 16;
@@ -27,8 +53,9 @@ async function packageFor(env: Env, items: CartItem[]) {
 }
 
 async function correiosGet(env: Env, base: string, service: string, params: URLSearchParams) {
+  const token = await correiosToken(env);
   const response = await fetch(`https://api.correios.com.br/${base}/v1/nacional/${encodeURIComponent(service)}?${params}`, {
-    headers: { Authorization: `Bearer ${env.CORREIOS_API_TOKEN}`, Accept: "application/json" },
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
   });
   const payload: Record<string, unknown> = await response.json<Record<string, unknown>>().catch(() => ({}));
   if (!response.ok) {
