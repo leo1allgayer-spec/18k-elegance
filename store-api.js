@@ -31,7 +31,9 @@
   }
   async function detail(){
     const root=document.querySelector('.product-detail');if(!root)return;
-    const slug=new URLSearchParams(location.search).get('produto');if(!slug)return;
+    const requestedSlug=new URLSearchParams(location.search).get('produto');if(!requestedSlug)return;
+    const legacySlugs={'brinco-aura':'brinco-geometrico-aura','anel-lumiere':'anel-tres-aros-lumiere','colar-elise':'colar-ponto-de-luz-elise','pulseira-essencia':'pulseira-essencia'};
+    const slug=legacySlugs[requestedSlug]||requestedSlug;
     try{
       const {product}=await api(`products/${encodeURIComponent(slug)}`),image=product.images?.[0]?.url||'assets/logo-oficial.png',variant=product.variants?.[0];
       document.title=`${product.name} | Elegance 18K`;document.querySelector('#detail-name').textContent=product.name;document.querySelector('#detail-price').textContent=money(product.price_cents);
