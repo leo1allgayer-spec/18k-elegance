@@ -11,7 +11,7 @@
       button.disabled=true;button.textContent='Calculando...';note.textContent='Consultando PAC e SEDEX nos Correios...';
       try{
         const response=await fetch('/api/shipping/correios/quote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({postal_code:postal,items:[{product_id:product.id,variant_id:variant.id,quantity:Number(document.querySelector('.quantity span')?.textContent||1)}]})});
-        const result=await response.json();if(!response.ok)throw new Error(result.error||result.message||'Cotação indisponível');
+        const result=await response.json();if(!response.ok)throw new Error(result.error?.message||result.message||result.error?.code||'Cotação indisponível');
         options.querySelectorAll('.correios-option').forEach(item=>item.remove());
         result.quotes.forEach(quote=>options.insertAdjacentHTML('beforeend',`<label class="correios-option"><input type="radio" name="delivery-preview"><span><b>${esc(quote.name)}</b><small>Entrega em até ${Number(quote.delivery_days)} dias úteis</small></span><strong>${money(quote.price_cents)}</strong></label>`));
         note.textContent='Valores e prazos calculados diretamente pelos Correios.';
