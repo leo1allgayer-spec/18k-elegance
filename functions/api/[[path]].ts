@@ -257,6 +257,19 @@ async function login(request: Request, env: Env): Promise<Response> {
 async function route(request: Request, env: Env): Promise<Response> {
   const method = request.method.toUpperCase();
   const parts = pathParts(request);
+  const correiosMissing = [
+    ["CORREIOS_USER", env.CORREIOS_USER],
+    ["CORREIOS_ACCESS_CODE", env.CORREIOS_ACCESS_CODE],
+    ["CORREIOS_POSTING_CARD", env.CORREIOS_POSTING_CARD],
+    ["CORREIOS_CONTRACT", env.CORREIOS_CONTRACT],
+    ["CORREIOS_DR", env.CORREIOS_DR],
+    ["CORREIOS_ORIGIN_ZIP", env.CORREIOS_ORIGIN_ZIP],
+    ["CORREIOS_PAC_CODE", env.CORREIOS_PAC_CODE],
+    ["CORREIOS_SEDEX_CODE", env.CORREIOS_SEDEX_CODE],
+  ].filter(([, value]) => !String(value || "").trim()).map(([name]) => name);
+  if (env.CORREIOS_ORIGIN_ZIP && env.CORREIOS_ORIGIN_ZIP.replace(/\D/g, "").length !== 8) {
+    correiosMissing.push("CORREIOS_ORIGIN_ZIP_INVALID");
+  }
   if (method === "GET" && parts[0] === "health") return json({
     ok: true,
     service: "elegance-api",
@@ -265,6 +278,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       mercado_pago: Boolean(env.MERCADO_PAGO_ACCESS_TOKEN),
       mercado_pago_webhook: Boolean(env.MERCADO_PAGO_WEBHOOK_SECRET),
       correios: correiosConfigured(env),
+      correios_missing: correiosMissing,
     },
   });
   if (method === "GET" && parts[0] === "categories") return categories(env);
