@@ -2,6 +2,23 @@
   const money=cents=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format((Number(cents)||0)/100);
   const esc=value=>String(value??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
   const api=async path=>{const response=await fetch(`/api/${path}`);if(!response.ok)throw new Error('API indisponível');return response.json()};
+  function enableProductShipping(product,variant){
+    const box=document.querySelector('.shipping-box'),input=box?.querySelector('.shipping-form input'),button=box?.querySelector('.shipping-form button'),options=box?.querySelector('.motoboy-option'),note=box?.querySelector('.simulation-note');
+    if(!box||!input||!button||!options||!variant)return;
+    button.addEventListener('click',async()=>{
+      const postal=String(input.value||'').replace(/\D/g,'');
+      if(postal.length!==8){note.textContent='Digite um CEP válido com 8 números.';return}
+      button.disabled=true;button.textContent='Calculando...';note.textContent='Consultando PAC e SEDEX nos Correios...';
+      try{
+        const response=await fetch('/api/shipping/correios/quote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({postal_code:postal,items:[{product_id:product.id,variant_id:variant.id,quantity:Number(document.querySelector('.quantity span')?.textContent||1)}]})});
+        const result=await response.json();if(!response.ok)throw new Error(result.error||result.message||'Cotação indisponível');
+        options.querySelectorAll('.correios-option').forEach(item=>item.remove());
+        result.quotes.forEach(quote=>options.insertAdjacentHTML('beforeend',`<label class="correios-option"><input type="radio" name="delivery-preview"><span><b>${esc(quote.name)}</b><small>Entrega em até ${Number(quote.delivery_days)} dias úteis</small></span><strong>${money(quote.price_cents)}</strong></label>`));
+        note.textContent='Valores e prazos calculados diretamente pelos Correios.';
+      }catch(error){note.textContent=error.message||'Não foi possível calcular PAC e SEDEX agora.'}
+      finally{button.disabled=false;button.textContent='Calcular'}
+    });
+  }
   async function catalog(){
     const grid=document.querySelector('.catalog-grid');if(!grid)return;
     const params=new URLSearchParams(location.search),category=params.get('categoria')||'',query=params.get('q')||'';
@@ -25,6 +42,7 @@
       const pix=document.querySelector('.pix-price');pix.textContent=product.pix_price_cents?`${money(product.pix_price_cents)} no Pix`:'Consulte as condições de pagamento no checkout.';
       const add=document.querySelector('.add-cart');add.dataset.product=product.name;add.dataset.price=(product.price_cents/100).toFixed(2);add.dataset.image=image;add.dataset.id=String(product.id);add.dataset.variant=String(variant?.id||'');add.disabled=!variant||variant.stock<1;add.querySelector('span').textContent=add.disabled?'Sem estoque':'→';
       const finish=document.querySelector('.finish-choice span');if(finish)finish.textContent=variant?.finish||'Dourado 18K';
+      enableProductShipping(product,variant);
     }catch(error){console.warn('Produto usando conteúdo de apresentação.',error)}
   }
   catalog();detail();
