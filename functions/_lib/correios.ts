@@ -98,8 +98,8 @@ export async function publicCorreiosQuote(request: Request, env: Env): Promise<R
     if (["INVALID_CART", "EMPTY_CART", "OUT_OF_STOCK"].includes(code)) return apiError("Não foi possível calcular o pacote da sacola.", 400, code);
     if (code.startsWith("CORREIOS_PRICE_401") || code.startsWith("CORREIOS_PRICE_403")) return apiError("A API de Preços dos Correios não está liberada para este contrato.", 502, code);
     if (code.startsWith("CORREIOS_DEADLINE_401") || code.startsWith("CORREIOS_DEADLINE_403")) return apiError("A API de Prazos dos Correios não está liberada para este contrato.", 502, code);
-    if (code.startsWith("CORREIOS_PRICE_")) return apiError("Os Correios recusaram o cálculo do preço do frete.", 502, code);
-    if (code.startsWith("CORREIOS_DEADLINE_")) return apiError("Os Correios recusaram o cálculo do prazo de entrega.", 502, code);
+    if (code.startsWith("CORREIOS_PRICE_")) return apiError(`Os Correios recusaram o cálculo do preço do frete (${code.replace("CORREIOS_PRICE_", "HTTP ")}).`, 502, code);
+    if (code.startsWith("CORREIOS_DEADLINE_")) return apiError(`Os Correios recusaram o cálculo do prazo de entrega (${code.replace("CORREIOS_DEADLINE_", "HTTP ")}).`, 502, code);
     if (code === "CORREIOS_INVALID_PRICE_RESPONSE") return apiError("Os Correios não retornaram um preço válido para este serviço.", 502, code);
     if (code === "CORREIOS_INVALID_DEADLINE_RESPONSE") return apiError("Os Correios não retornaram um prazo válido para este serviço.", 502, code);
     return apiError("Os Correios não retornaram uma cotação agora. Tente novamente.", 502, code);
