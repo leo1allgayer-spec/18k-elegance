@@ -78,7 +78,7 @@ export async function calculateCorreiosQuotes(env: Env, destination: string, ite
     if (env.CORREIOS_DR) priceParams.set("nuDR", env.CORREIOS_DR);
     const [price, deadline] = await Promise.all([
       correiosGet(env, "preco", service.code, priceParams),
-      correiosGet(env, "prazo/v3", service.code, new URLSearchParams({ cepOrigem: origin, cepDestino })),
+      correiosGet(env, "prazo", service.code, new URLSearchParams({ cepOrigem: origin, cepDestino })),
     ]);
     const priceCents = amount(price.pcFinal ?? price.pcBase ?? price.preco ?? price.valor);
     const deliveryDays = Number(deadline.prazoEntrega ?? deadline.prazo ?? deadline.diasUteis ?? 0);
