@@ -33,9 +33,16 @@
     const root=document.querySelector('.product-detail');if(!root)return;
     const requestedSlug=new URLSearchParams(location.search).get('produto');if(!requestedSlug)return;
     const legacySlugs={'brinco-aura':'brinco-geometrico-aura','anel-lumiere':'anel-tres-aros-lumiere','colar-elise':'colar-ponto-de-luz-elise','pulseira-essencia':'pulseira-essencia'};
-    const slug=legacySlugs[requestedSlug]||requestedSlug;
     try{
-      const {product}=await api(`products/${encodeURIComponent(slug)}`),image=product.images?.[0]?.url||'assets/logo-oficial.png',variant=product.variants?.[0];
+      let productData;
+      try{productData=await api(`products/${encodeURIComponent(legacySlugs[requestedSlug]||requestedSlug)}`)}
+      catch{
+        const fallbackName=document.querySelector('#detail-name')?.textContent?.trim()||requestedSlug.replaceAll('-',' ');
+        const listing=await api(`products?q=${encodeURIComponent(fallbackName)}`),match=listing.products?.[0];
+        if(!match)throw new Error('Produto não encontrado no catálogo');
+        productData=await api(`products/${encodeURIComponent(match.slug)}`);
+      }
+      const {product}=productData,image=product.images?.[0]?.url||'assets/logo-oficial.png',variant=product.variants?.[0];
       document.title=`${product.name} | Elegance 18K`;document.querySelector('#detail-name').textContent=product.name;document.querySelector('#detail-price').textContent=money(product.price_cents);
       const main=document.querySelector('#detail-image');main.src=image;main.alt=product.name;
       document.querySelector('.thumbs').innerHTML=product.images?.length?product.images.map((item,index)=>`<button class="${index?'':'active'}"><img src="${esc(item.url)}" alt="${esc(item.alt_text||product.name)}"></button>`).join(''):`<button class="active"><img src="${esc(image)}" alt="${esc(product.name)}"></button>`;
