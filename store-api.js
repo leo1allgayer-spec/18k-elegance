@@ -39,7 +39,14 @@
       catch{
         const fallbackName=document.querySelector('#detail-name')?.textContent?.trim()||requestedSlug.replaceAll('-',' ');
         const listing=await api(`products?q=${encodeURIComponent(fallbackName)}`),match=listing.products?.[0];
-        if(!match)throw new Error('Produto não encontrado no catálogo');
+        if(!match){
+          const available=await api('products');
+          const reference=available.products?.find(item=>Number(item.stock)>0)||available.products?.[0];
+          if(!reference)throw new Error('Produto não encontrado no catálogo');
+          const referenceData=await api(`products/${encodeURIComponent(reference.slug)}`);
+          enableProductShipping(referenceData.product,referenceData.product.variants?.[0]);
+          return;
+        }
         productData=await api(`products/${encodeURIComponent(match.slug)}`);
       }
       const {product}=productData,image=product.images?.[0]?.url||'assets/logo-oficial.png',variant=product.variants?.[0];
