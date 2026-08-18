@@ -43,6 +43,33 @@
   white-space: nowrap;
 }
 
+.integration-heading {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.integration-heading .badge { margin-left: auto; }
+.integration-heading h3 { margin: 0; }
+.integration-mark {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #c59a47;
+  border-radius: 50%;
+  color: #e0bd78;
+  font: 600 24px "Bodoni Moda", serif;
+}
+.integration-note {
+  display: block;
+  margin-top: 18px;
+  color: #8f9bb0;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
 @media (max-width: 760px) {
   .icon-btn { min-height: 42px; padding: 0 16px; font-size: 12px; }
 }

@@ -3,6 +3,7 @@ import { apiError, json, normalizeEmail, readJson } from "../_lib/http";
 import { clearSessionCookie, createSession, currentCustomer, deleteCurrentSession, hashPassword, sessionCookie, verifyPassword } from "../_lib/auth";
 import { createMercadoPagoCheckout, mercadoPagoDiagnostic, mercadoPagoWebhook, publicPaymentStatus } from "../_lib/mercado-pago";
 import { correiosConfigured, publicCorreiosQuote } from "../_lib/correios";
+import { blingCallback, blingConnect, blingStatus, disconnectBling } from "../_lib/bling";
 
 type RegisterBody = { name?: string; email?: string; phone?: string; birth_date?: string; password?: string };
 type LoginBody = { email?: string; password?: string };
@@ -290,9 +291,11 @@ async function route(request: Request, env: Env): Promise<Response> {
       mercado_pago_webhook: Boolean(env.MERCADO_PAGO_WEBHOOK_SECRET),
       correios: correiosConfigured(env),
       correios_missing: correiosMissing,
+      bling: Boolean(env.BLING_CLIENT_ID && env.BLING_CLIENT_SECRET),
     },
   });
   if (method === "GET" && parts[0] === "categories") return categories(env);
+  if (method === "GET" && parts.join("/") === "integrations/bling/callback") return blingCallback(request, env);
   if (method === "GET" && parts[0] === "products" && !parts[1]) return products(request, env);
   if (method === "GET" && parts[0] === "products" && parts[1]) return productBySlug(parts[1], env);
   if (method === "POST" && parts.join("/") === "checkout/mercado-pago") return createMercadoPagoCheckout(request, env);
@@ -314,6 +317,9 @@ async function route(request: Request, env: Env): Promise<Response> {
     const admin = await requireAdmin(request, env);
     if (!admin) return apiError("Acesso restrito à administração.", 403, "FORBIDDEN");
     if (method === "GET" && parts[1] === "dashboard") return adminDashboard(env);
+    if (method === "GET" && parts.join("/") === "admin/integrations/bling/connect") return blingConnect(request, env, admin);
+    if (method === "GET" && parts.join("/") === "admin/integrations/bling/status") return blingStatus(env);
+    if (method === "DELETE" && parts.join("/") === "admin/integrations/bling") return disconnectBling(env);
     if (method === "GET" && parts[1] === "products") return adminProducts(env);
     if (method === "POST" && parts[1] === "products" && !parts[2]) return saveProduct(request, env);
     if (method === "PUT" && parts[1] === "products" && parts[2]) return saveProduct(request, env, integer(parts[2]));

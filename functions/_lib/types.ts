@@ -11,6 +11,8 @@ export interface Env {
   CORREIOS_SEDEX_CODE?: string;
   CORREIOS_CONTRACT?: string;
   CORREIOS_DR?: string;
+  BLING_CLIENT_ID?: string;
+  BLING_CLIENT_SECRET?: string;
 }
 
 export interface SessionCustomer {
