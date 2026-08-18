@@ -168,6 +168,17 @@ async function adminOrders(env: Env): Promise<Response> {
   return json({ ok: true, orders: result.results });
 }
 
+async function adminOrderDetail(env: Env, id: number): Promise<Response> {
+  const order = await env.DB.prepare(`SELECT o.id, o.order_number, o.status, o.subtotal_cents, o.discount_cents,
+    o.shipping_cents, o.total_cents, o.shipping_method, o.shipping_address_json, o.tracking_code, o.created_at,
+    c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone
+    FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.id = ?`).bind(id).first();
+  if (!order) return apiError("Pedido não encontrado.", 404, "NOT_FOUND");
+  const items = await env.DB.prepare(`SELECT product_name, sku, unit_price_cents, quantity
+    FROM order_items WHERE order_id = ? ORDER BY id`).bind(id).all();
+  return json({ ok: true, order, items: items.results });
+}
+
 async function adminCustomers(env: Env): Promise<Response> {
   const result = await env.DB.prepare(`SELECT c.id, c.name, c.email, c.phone, c.birth_date, c.active, c.created_at,
     COUNT(o.id) AS order_count, COALESCE(SUM(o.total_cents), 0) AS total_spent_cents
@@ -310,6 +321,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (method === "GET" && parts[1] === "categories") return adminCategories(env);
     if (method === "POST" && parts[1] === "categories" && !parts[2]) return saveCategory(request, env);
     if (method === "PUT" && parts[1] === "categories" && parts[2]) return saveCategory(request, env, integer(parts[2]));
+    if (method === "GET" && parts[1] === "orders" && parts[2]) return adminOrderDetail(env, integer(parts[2]));
     if (method === "GET" && parts[1] === "orders") return adminOrders(env);
     if (method === "PATCH" && parts[1] === "orders" && parts[2]) return updateOrder(request, env, integer(parts[2]));
     if (method === "GET" && parts[1] === "customers") return adminCustomers(env);

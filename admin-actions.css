@@ -39,6 +39,10 @@
   transform: none;
 }
 
+.order-actions {
+  white-space: nowrap;
+}
+
 @media (max-width: 760px) {
   .icon-btn { min-height: 42px; padding: 0 16px; font-size: 12px; }
 }
