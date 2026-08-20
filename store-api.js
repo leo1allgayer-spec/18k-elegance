@@ -30,10 +30,14 @@
     const params=new URLSearchParams(location.search),category=params.get('categoria')||'',query=params.get('q')||'';
     const search=new URLSearchParams();if(category)search.set('category',category);if(query)search.set('q',query);
     try{
-      const data=await api(`products?${search}`);if(!data.products.length)return;
-      grid.innerHTML=data.products.map(product=>`<article data-category="${esc(product.category_slug||'')}" data-name="${esc(product.name)}"><a href="produto.html?produto=${encodeURIComponent(product.slug)}"><div class="catalog-photo"><img src="${esc(product.image_url||'assets/logo-oficial.png')}" alt="${esc(product.name)}" loading="lazy">${product.featured?'<span>DESTAQUE</span>':''}<button class="favorite" aria-label="Favoritar">♡</button></div><h2>${esc(product.name)}</h2><p>${money(product.price_cents)}</p><small>${product.pix_price_cents?`${money(product.pix_price_cents)} no Pix`:product.stock>0?'Disponível':'Indisponível'}</small></a></article>`).join('');
+      const data=await api(`products?${search}`);
+      grid.innerHTML=data.products.length?data.products.map(product=>`<article data-category="${esc(product.category_slug||'')}" data-name="${esc(product.name)}"><a href="produto.html?produto=${encodeURIComponent(product.slug)}"><div class="catalog-photo"><img src="${esc(product.image_url||'assets/logo-oficial.png')}" alt="${esc(product.name)}" loading="lazy">${product.featured?'<span>DESTAQUE</span>':''}<button class="favorite" aria-label="Favoritar">♡</button></div><h2>${esc(product.name)}</h2><p>${money(product.price_cents)}</p><small>${product.pix_price_cents?`${money(product.pix_price_cents)} no Pix`:product.stock>0?'Disponível':'Indisponível'}</small></a></article>`).join(''):'<p class="catalog-empty">Nenhum produto cadastrado nesta categoria.</p>';
       document.querySelectorAll('.category-tabs a,.store-header nav a').forEach(link=>{const linkCategory=new URL(link.href,location.href).searchParams.get('categoria');link.classList.toggle('active',linkCategory===category||(!linkCategory&&!category&&link.pathname.endsWith('catalogo.html')))});
     }catch(error){console.warn('Catálogo usando conteúdo de apresentação.',error)}
+  }
+  async function featured(){
+    const grid=document.querySelector('.products .product-grid');if(!grid)return;
+    try{const data=await api('products');grid.innerHTML=data.products.length?data.products.slice(0,4).map(product=>`<article><a href="produto.html?produto=${encodeURIComponent(product.slug)}"><div class="product-photo"><img src="${esc(product.image_url||'assets/logo-oficial.png')}" alt="${esc(product.name)}" loading="lazy">${product.featured?'<span>DESTAQUE</span>':''}<button aria-label="Favoritar">♡</button></div><h3>${esc(product.name)}</h3><p>${money(product.price_cents)}</p><small>${product.pix_price_cents?`${money(product.pix_price_cents)} no Pix`:product.stock>0?'Disponível':'Indisponível'}</small></a></article>`).join(''):'<p class="catalog-empty">Novos produtos serão adicionados em breve.</p>'}catch(error){grid.innerHTML='<p class="catalog-empty">Não foi possível carregar os produtos agora.</p>';console.warn(error)}
   }
   async function detail(){
     const root=document.querySelector('.product-detail');if(!root)return;
@@ -68,5 +72,5 @@
       enableProductShipping(product,variant);
     }catch(error){console.warn('Produto usando conteúdo de apresentação.',error)}
   }
-  catalog();detail();
+  catalog();featured();detail();
 })();
