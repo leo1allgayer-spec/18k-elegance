@@ -158,7 +158,12 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
   catch { return apiError("O cupom informado não é válido.", 400, "INVALID_COUPON"); }
   const shippingMethod = body.shipping?.method || "pickup";
   let shippingCents = 0;
-  if (shippingMethod === "correios") {
+  if (shippingMethod === "motoboy") {
+    const city = (body.shipping?.city || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+    const rates: Record<string, number> = { canoas: 2000, esteio: 2500, sapucaia: 3000 };
+    shippingCents = rates[city] || 0;
+    if (!shippingCents) return apiError("Para esta cidade, solicite a cotação do motoboy pelo WhatsApp ou selecione Correios.", 400, "MOTOBOY_QUOTE_REQUIRED");
+  } else if (shippingMethod === "correios") {
     try {
       const quotes = await calculateCorreiosQuotes(env, body.shipping?.postal_code || "", body.items || []);
       const selected = quotes.find(quote => quote.code === body.shipping?.service_code);
@@ -186,7 +191,7 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
   const preferenceBody = {
     items: [
       ...products.map(item => ({ id: String(item.product_id), title: item.personalization_json ? `${item.name} - Personalizado` : item.name, quantity: item.stock, currency_id: "BRL", unit_price: item.unit_price_cents / 100 })),
-      ...(shippingCents ? [{ id: "shipping", title: "Frete Correios", quantity: 1, currency_id: "BRL", unit_price: shippingCents / 100 }] : []),
+      ...(shippingCents ? [{ id: "shipping", title: shippingMethod === "motoboy" ? "Entrega por motoboy" : "Frete Correios", quantity: 1, currency_id: "BRL", unit_price: shippingCents / 100 }] : []),
     ],
     payer: { name: customer.name!.trim(), email, phone: { number: digits(customer.phone || "") }, identification: { type: "CPF", number: digits(customer.cpf || "") } },
     external_reference: orderNumber,

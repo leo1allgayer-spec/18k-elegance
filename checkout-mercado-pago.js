@@ -4,6 +4,15 @@
   const message=document.createElement('p');message.className='checkout-message';message.setAttribute('aria-live','polite');document.querySelector('.checkout-actions').prepend(message);
   const fields=()=>Object.fromEntries(new FormData(form));
   const cartItems=()=>JSON.parse(localStorage.getItem('elegance-cart')||'[]').map(item=>({product_id:Number(item.product_id),variant_id:Number(item.variant_id),quantity:Number(item.qty),personalization:item.personalization||undefined}));
+  function setupMotoboy(){
+    const cityInput=form.elements.city_state,option=form.querySelector('.motoboy-checkout-option'),radio=option?.querySelector('input'),price=option?.querySelector('strong'),help=option?.querySelector('small'),link=form.querySelector('.motoboy-whatsapp');
+    if(!cityInput||!option||!radio||!price||!link)return;
+    const normalize=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+    const update=()=>{const city=normalize(cityInput.value.split('-')[0]),rates={canoas:2000,esteio:2500,sapucaia:3000},cents=rates[city];
+      if(cents){radio.disabled=false;price.textContent=(cents/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});help.textContent=`Valor fixo para ${cityInput.value.split('-')[0].trim()}`;link.hidden=true}
+      else{radio.disabled=true;price.textContent=city?'Sob consulta':'Informe a cidade';help.textContent='Canoas R$ 20 · Esteio R$ 25 · Sapucaia R$ 30';if(radio.checked)form.querySelector('input[name="shipping"][value="pickup"]')?.click();link.hidden=!city;link.href=`https://wa.me/555194927676?text=${encodeURIComponent(`Olá! Gostaria de cotar a entrega por motoboy para ${cityInput.value.trim()}.`)}`}
+    };cityInput.addEventListener('input',update);cityInput.addEventListener('change',update);update();
+  }
   async function setupCorreios(){
     const old=form.querySelector('.shipping-coming-soon');if(!old)return;
     try{const health=await fetch('/api/health').then(response=>response.json());if(!health.integrations?.correios)return}catch{return}
@@ -41,5 +50,5 @@
   }
   next.addEventListener('click',async()=>{const step=window.eleganceCheckout.step;if(step<3){if(validStep(step))window.eleganceCheckout.next();return}if(step===3)await createPayment()});
   back.addEventListener('click',()=>window.eleganceCheckout.back());
-  setupCorreios();
+  setupMotoboy();setupCorreios();
 })();
