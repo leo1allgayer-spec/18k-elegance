@@ -6,3 +6,7 @@ pages_build_output_dir = "."
 binding = "DB"
 database_name = "elegance-18k"
 database_id = "75219293-ded1-45e2-8e25-9cf424f4db87"
+
+[[r2_buckets]]
+binding = "PERSONALIZATION_BUCKET"
+bucket_name = "elegance-personalizacoes"

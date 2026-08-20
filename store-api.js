@@ -2,6 +2,12 @@
   const money=cents=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format((Number(cents)||0)/100);
   const esc=value=>String(value??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
   const api=async path=>{const response=await fetch(`/api/${path}`);if(!response.ok)throw new Error('API indisponível');return response.json()};
+  function enablePhotoPersonalization(product){
+    const panel=document.querySelector('.photo-personalization'),add=document.querySelector('.add-cart');
+    const enabled=product.category_slug==='fotogravacao';
+    if(!panel||!add)return;
+    panel.hidden=!enabled;add.dataset.personalizable=enabled?'true':'false';
+  }
   function enableProductShipping(product,variant){
     const box=document.querySelector('.shipping-box'),input=box?.querySelector('.shipping-form input'),button=box?.querySelector('.shipping-form button'),options=box?.querySelector('.motoboy-option'),note=box?.querySelector('.simulation-note');
     if(!box||!input||!button||!options||!variant)return;
@@ -57,6 +63,7 @@
       document.querySelector('.description').textContent=product.description||'Semijoia Elegance com acabamento premium e garantia de 1 ano.';
       const pix=document.querySelector('.pix-price');pix.textContent=product.pix_price_cents?`${money(product.pix_price_cents)} no Pix`:'Consulte as condições de pagamento no checkout.';
       const add=document.querySelector('.add-cart');add.dataset.product=product.name;add.dataset.price=(product.price_cents/100).toFixed(2);add.dataset.image=image;add.dataset.id=String(product.id);add.dataset.variant=String(variant?.id||'');add.disabled=!variant||variant.stock<1;add.querySelector('span').textContent=add.disabled?'Sem estoque':'→';
+      enablePhotoPersonalization(product);
       const finish=document.querySelector('.finish-choice span');if(finish)finish.textContent=variant?.finish||'Dourado 18K';
       enableProductShipping(product,variant);
     }catch(error){console.warn('Produto usando conteúdo de apresentação.',error)}

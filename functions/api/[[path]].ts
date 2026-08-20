@@ -4,6 +4,7 @@ import { clearSessionCookie, createSession, currentCustomer, deleteCurrentSessio
 import { createMercadoPagoCheckout, mercadoPagoDiagnostic, mercadoPagoWebhook, publicPaymentStatus } from "../_lib/mercado-pago";
 import { correiosConfigured, publicCorreiosQuote } from "../_lib/correios";
 import { blingCallback, blingConnect, blingStatus, disconnectBling } from "../_lib/bling";
+import { adminPersonalizationImage, uploadPersonalization } from "../_lib/personalization";
 
 type RegisterBody = { name?: string; email?: string; phone?: string; birth_date?: string; password?: string };
 type LoginBody = { email?: string; password?: string };
@@ -175,7 +176,7 @@ async function adminOrderDetail(env: Env, id: number): Promise<Response> {
     c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone
     FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.id = ?`).bind(id).first();
   if (!order) return apiError("Pedido não encontrado.", 404, "NOT_FOUND");
-  const items = await env.DB.prepare(`SELECT product_name, sku, unit_price_cents, quantity
+  const items = await env.DB.prepare(`SELECT product_name, sku, unit_price_cents, quantity, personalization_json, personalization_fee_cents
     FROM order_items WHERE order_id = ? ORDER BY id`).bind(id).all();
   return json({ ok: true, order, items: items.results });
 }
@@ -299,6 +300,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (method === "GET" && parts[0] === "products" && !parts[1]) return products(request, env);
   if (method === "GET" && parts[0] === "products" && parts[1]) return productBySlug(parts[1], env);
   if (method === "POST" && parts.join("/") === "checkout/mercado-pago") return createMercadoPagoCheckout(request, env);
+  if (method === "POST" && parts.join("/") === "personalization/upload") return uploadPersonalization(request, env);
   if (method === "POST" && parts.join("/") === "shipping/correios/quote") return publicCorreiosQuote(request, env);
   if (method === "POST" && parts.join("/") === "payments/mercado-pago/webhook") return mercadoPagoWebhook(request, env);
   if (method === "GET" && parts.join("/") === "payments/mercado-pago/diagnostic") return mercadoPagoDiagnostic(env);
@@ -328,6 +330,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (method === "POST" && parts[1] === "categories" && !parts[2]) return saveCategory(request, env);
     if (method === "PUT" && parts[1] === "categories" && parts[2]) return saveCategory(request, env, integer(parts[2]));
     if (method === "GET" && parts[1] === "orders" && parts[2]) return adminOrderDetail(env, integer(parts[2]));
+    if (method === "GET" && parts[1] === "personalization" && parts[2]) return adminPersonalizationImage(env, parts[2]);
     if (method === "GET" && parts[1] === "orders") return adminOrders(env);
     if (method === "PATCH" && parts[1] === "orders" && parts[2]) return updateOrder(request, env, integer(parts[2]));
     if (method === "GET" && parts[1] === "customers") return adminCustomers(env);

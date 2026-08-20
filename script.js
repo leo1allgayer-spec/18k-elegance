@@ -117,18 +117,53 @@ document.querySelectorAll("[data-qty]").forEach((button) => button.addEventListe
   const value = button.parentElement.querySelector("span");
   value.textContent = Math.max(1, Number(value.textContent) + Number(button.dataset.qty));
 }));
+let personalizationUpload = null;
+const personalizationInput = document.querySelector("#engraving-image");
+const personalizationMessage = document.querySelector(".personalization-message");
+const personalizationPreview = document.querySelector(".personalization-preview");
+personalizationInput?.addEventListener("change", async () => {
+  const file = personalizationInput.files?.[0];
+  personalizationUpload = null;
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { personalizationMessage.textContent = "A imagem deve ter no máximo 5 MB."; personalizationInput.value = ""; return; }
+  const add = document.querySelector(".add-cart");
+  const data = new FormData(); data.append("product_id", add?.dataset.id || ""); data.append("image", file);
+  personalizationMessage.textContent = "Enviando a imagem com segurança…";
+  personalizationInput.disabled = true;
+  try {
+    const response = await fetch("/api/personalization/upload", { method: "POST", body: data });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error?.message || "Não foi possível enviar a imagem.");
+    personalizationUpload = result.upload;
+    personalizationPreview.querySelector("img").src = URL.createObjectURL(file);
+    personalizationPreview.querySelector("b").textContent = file.name;
+    personalizationPreview.hidden = false; personalizationMessage.textContent = "Imagem pronta para a fotogravação.";
+  } catch (error) { personalizationMessage.textContent = error.message; personalizationInput.value = ""; }
+  finally { personalizationInput.disabled = false; }
+});
+personalizationPreview?.querySelector("button")?.addEventListener("click", () => {
+  personalizationUpload = null; personalizationInput.value = ""; personalizationPreview.hidden = true; personalizationMessage.textContent = "";
+});
 document.querySelector(".add-cart")?.addEventListener("click", (event) => {
   const button = event.currentTarget;
   const qty = Number(document.querySelector(".quantity span")?.textContent || 1);
+  const engravingText = document.querySelector("#engraving-text")?.value.trim() || "";
+  if (button.dataset.personalizable === "true" && personalizationInput?.files?.length && !personalizationUpload) {
+    personalizationMessage.textContent = "Aguarde a conclusão do envio da imagem."; return;
+  }
+  const personalization = button.dataset.personalizable === "true" && (engravingText || personalizationUpload) ? {
+    engraving_text: engravingText || undefined, image_upload_id: personalizationUpload?.id || undefined, image_name: personalizationUpload?.name || undefined,
+  } : null;
   const cart = getCart();
-  const existing = cart.find((item) => item.name === button.dataset.product);
+  const personalizationKey = JSON.stringify(personalization || {});
+  const existing = cart.find((item) => item.name === button.dataset.product && JSON.stringify(item.personalization || {}) === personalizationKey);
   if (existing) {
     existing.qty += qty;
     existing.product_id = Number(button.dataset.id) || existing.product_id || null;
     existing.variant_id = Number(button.dataset.variant) || existing.variant_id || null;
   }
-  else cart.push({ name: button.dataset.product, price: Number(button.dataset.price), image: button.dataset.image, qty,
-    product_id: Number(button.dataset.id) || null, variant_id: Number(button.dataset.variant) || null });
+  else cart.push({ name: button.dataset.product, price: Number(button.dataset.price) + (engravingText ? 29.90 : 0) + (personalizationUpload ? 49.90 : 0), image: button.dataset.image, qty,
+    product_id: Number(button.dataset.id) || null, variant_id: Number(button.dataset.variant) || null, personalization });
   saveCart(cart);
   button.textContent = "Adicionado à sacola ✓";
   setTimeout(() => { button.textContent = "Adicionar à sacola"; }, 1800);
@@ -138,7 +173,8 @@ function renderCart() {
   const container = document.querySelector("#cart-items");
   if (!container) return;
   const cart = getCart();
-  container.innerHTML = cart.map((item, index) => `<article class="cart-item"><img src="${item.image}" alt="${item.name}"><div><h3>${item.name}</h3><p>Quantidade: ${item.qty}</p><button data-remove="${index}">Remover</button></div><strong>${money(item.price * item.qty)}</strong></article>`).join("");
+  const safe = value => String(value || "").replace(/[&<>\"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  container.innerHTML = cart.map((item, index) => `<article class="cart-item"><img src="${item.image}" alt="${item.name}"><div><h3>${item.name}</h3><p>Quantidade: ${item.qty}</p>${item.personalization?.engraving_text?`<p class="cart-personalization"><b>Gravação:</b> ${safe(item.personalization.engraving_text)}</p>`:""}${item.personalization?.image_name?`<p class="cart-personalization"><b>Foto:</b> ${safe(item.personalization.image_name)}</p>`:""}<button data-remove="${index}">Remover</button></div><strong>${money(item.price * item.qty)}</strong></article>`).join("");
   const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   document.querySelector("#cart-subtotal").textContent = money(total);
   document.querySelector("#cart-total").textContent = money(total);

@@ -3,7 +3,7 @@ import { apiError, json, normalizeEmail, readJson } from "./http";
 import { hashPassword } from "./auth";
 import { calculateCorreiosQuotes } from "./correios";
 
-type CheckoutItem = { product_id?: number; variant_id?: number; quantity?: number };
+type CheckoutItem = { product_id?: number; variant_id?: number; quantity?: number; personalization?: { engraving_text?: string; image_upload_id?: string; image_name?: string } };
 type CheckoutBody = {
   customer?: { name?: string; email?: string; phone?: string; cpf?: string };
   shipping?: {
@@ -17,7 +17,8 @@ type CheckoutBody = {
 
 type ProductRow = {
   product_id: number; variant_id: number; name: string; sku: string;
-  unit_price_cents: number; stock: number;
+  unit_price_cents: number; stock: number; category_slug: string | null;
+  personalization_json: string | null; personalization_fee_cents: number; image_upload_id: string | null;
 };
 
 type MercadoPagoPreference = { id: string; init_point?: string; sandbox_init_point?: string };
@@ -86,11 +87,22 @@ async function resolveItems(env: Env, items: CheckoutItem[]): Promise<ProductRow
       throw new Error("INVALID_CART");
     }
     const row = await env.DB.prepare(`SELECT p.id AS product_id, v.id AS variant_id, p.name, v.sku,
-      COALESCE(v.price_cents,p.price_cents) AS unit_price_cents, v.stock
-      FROM products p JOIN product_variants v ON v.product_id=p.id
+      COALESCE(v.price_cents,p.price_cents) AS unit_price_cents, v.stock, c.slug AS category_slug
+      FROM products p JOIN product_variants v ON v.product_id=p.id LEFT JOIN categories c ON c.id=p.category_id
       WHERE p.id=? AND v.id=? AND p.active=1 AND v.active=1`).bind(item.product_id, item.variant_id).first<ProductRow>();
     if (!row || row.stock < quantity) throw new Error("OUT_OF_STOCK");
-    resolved.push({ ...row, stock: quantity });
+    const engravingText = item.personalization?.engraving_text?.trim() || "";
+    const imageUploadId = item.personalization?.image_upload_id?.trim() || "";
+    if ((engravingText || imageUploadId) && row.category_slug !== "fotogravacao") throw new Error("INVALID_PERSONALIZATION");
+    if (engravingText.length > 80) throw new Error("INVALID_PERSONALIZATION");
+    if (imageUploadId) {
+      const upload = await env.DB.prepare("SELECT id FROM personalization_uploads WHERE id=? AND product_id=? AND order_id IS NULL")
+        .bind(imageUploadId, row.product_id).first();
+      if (!upload) throw new Error("INVALID_PERSONALIZATION_IMAGE");
+    }
+    const fee = (engravingText ? 2990 : 0) + (imageUploadId ? 4990 : 0);
+    const personalization = engravingText || imageUploadId ? { engraving_text: engravingText || null, image_upload_id: imageUploadId || null, image_name: item.personalization?.image_name?.slice(0, 160) || null } : null;
+    resolved.push({ ...row, unit_price_cents: row.unit_price_cents + fee, stock: quantity, personalization_json: personalization ? JSON.stringify(personalization) : null, personalization_fee_cents: fee, image_upload_id: imageUploadId || null });
   }
   if (!resolved.length) throw new Error("EMPTY_CART");
   return resolved;
@@ -121,6 +133,7 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
   catch (error) {
     const code = error instanceof Error ? error.message : "INVALID_CART";
     if (code === "OUT_OF_STOCK") return apiError("Um produto ficou sem estoque. Atualize a sacola.", 409, code);
+    if (code.startsWith("INVALID_PERSONALIZATION")) return apiError("Revise os dados da fotogravação.", 400, code);
     return apiError("A sacola contém itens inválidos.", 400, code);
   }
   const subtotal = products.reduce((sum, item) => sum + item.unit_price_cents * item.stock, 0);
@@ -148,14 +161,15 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
     VALUES(?,?,'pending_payment',?,?,?,?,?,?)`).bind(orderNumber, id, subtotal, discount.cents, shippingCents, total, shippingMethod, address).run();
   const orderId = Number(orderResult.meta.last_row_id);
   await env.DB.batch([
-    ...products.map(item => env.DB.prepare(`INSERT INTO order_items(order_id,product_id,variant_id,product_name,sku,unit_price_cents,quantity)
-      VALUES(?,?,?,?,?,?,?)`).bind(orderId, item.product_id, item.variant_id, item.name, item.sku, item.unit_price_cents, item.stock)),
+    ...products.map(item => env.DB.prepare(`INSERT INTO order_items(order_id,product_id,variant_id,product_name,sku,unit_price_cents,quantity,personalization_json,personalization_fee_cents)
+      VALUES(?,?,?,?,?,?,?,?,?)`).bind(orderId, item.product_id, item.variant_id, item.name, item.sku, item.unit_price_cents, item.stock, item.personalization_json, item.personalization_fee_cents)),
+    ...products.filter(item => item.image_upload_id).map(item => env.DB.prepare("UPDATE personalization_uploads SET order_id=? WHERE id=? AND order_id IS NULL").bind(orderId, item.image_upload_id)),
     env.DB.prepare("INSERT INTO payments(order_id,provider,status,amount_cents) VALUES(?,'mercado_pago','pending',?)").bind(orderId, total),
   ]);
   const origin = new URL(request.url).origin;
   const preferenceBody = {
     items: [
-      ...products.map(item => ({ id: String(item.product_id), title: item.name, quantity: item.stock, currency_id: "BRL", unit_price: item.unit_price_cents / 100 })),
+      ...products.map(item => ({ id: String(item.product_id), title: item.personalization_json ? `${item.name} - Personalizado` : item.name, quantity: item.stock, currency_id: "BRL", unit_price: item.unit_price_cents / 100 })),
       ...(shippingCents ? [{ id: "shipping", title: "Frete Correios", quantity: 1, currency_id: "BRL", unit_price: shippingCents / 100 }] : []),
     ],
     payer: { name: customer.name!.trim(), email, phone: { number: digits(customer.phone || "") }, identification: { type: "CPF", number: digits(customer.cpf || "") } },

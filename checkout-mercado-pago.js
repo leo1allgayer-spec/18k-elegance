@@ -3,7 +3,7 @@
   if(!form||!next||!window.eleganceCheckout)return;
   const message=document.createElement('p');message.className='checkout-message';message.setAttribute('aria-live','polite');document.querySelector('.checkout-actions').prepend(message);
   const fields=()=>Object.fromEntries(new FormData(form));
-  const cartItems=()=>JSON.parse(localStorage.getItem('elegance-cart')||'[]').map(item=>({product_id:Number(item.product_id),variant_id:Number(item.variant_id),quantity:Number(item.qty)}));
+  const cartItems=()=>JSON.parse(localStorage.getItem('elegance-cart')||'[]').map(item=>({product_id:Number(item.product_id),variant_id:Number(item.variant_id),quantity:Number(item.qty),personalization:item.personalization||undefined}));
   async function setupCorreios(){
     const old=form.querySelector('.shipping-coming-soon');if(!old)return;
     try{const health=await fetch('/api/health').then(response=>response.json());if(!health.integrations?.correios)return}catch{return}

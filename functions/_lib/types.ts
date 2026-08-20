@@ -1,5 +1,6 @@
 export interface Env {
   DB: D1Database;
+  PERSONALIZATION_BUCKET?: R2Bucket;
   MERCADO_PAGO_ACCESS_TOKEN?: string;
   MERCADO_PAGO_WEBHOOK_SECRET?: string;
   CORREIOS_API_TOKEN?: string;
