@@ -14,7 +14,7 @@ export async function uploadPersonalization(request: Request, env: Env): Promise
   if (!Number.isInteger(productId) || !(file instanceof File)) return apiError("Produto ou imagem inválidos.");
   if (!ALLOWED_TYPES.has(file.type) || file.size < 1 || file.size > MAX_BYTES) return apiError("Use uma imagem JPG, PNG ou WebP com até 5 MB.");
   const product = await env.DB.prepare(`SELECT p.id FROM products p JOIN categories c ON c.id=p.category_id
-    WHERE p.id=? AND p.active=1 AND c.slug='fotogravacao'`).bind(productId).first();
+    WHERE p.id=? AND p.active=1 AND (p.personalizable=1 OR c.slug='fotogravacao')`).bind(productId).first();
   if (!product) return apiError("Este produto não aceita fotogravação.", 400, "NOT_PERSONALIZABLE");
   const id = crypto.randomUUID();
   const extension = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";

@@ -4,7 +4,7 @@
   const api=async path=>{const response=await fetch(`/api/${path}`);if(!response.ok)throw new Error('API indisponível');return response.json()};
   function enablePhotoPersonalization(product){
     const panel=document.querySelector('.photo-personalization'),add=document.querySelector('.add-cart');
-    const enabled=product.category_slug==='fotogravacao';
+    const enabled=Boolean(product.personalizable)||product.category_slug==='fotogravacao';
     if(!panel||!add)return;
     panel.hidden=!enabled;add.dataset.personalizable=enabled?'true':'false';
   }

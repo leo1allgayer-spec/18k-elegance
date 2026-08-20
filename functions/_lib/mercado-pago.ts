@@ -17,7 +17,7 @@ type CheckoutBody = {
 
 type ProductRow = {
   product_id: number; variant_id: number; name: string; sku: string;
-  unit_price_cents: number; stock: number; category_slug: string | null;
+  unit_price_cents: number; stock: number; category_slug: string | null; personalizable: number;
   personalization_json: string | null; personalization_fee_cents: number; image_upload_id: string | null;
 };
 
@@ -87,13 +87,13 @@ async function resolveItems(env: Env, items: CheckoutItem[]): Promise<ProductRow
       throw new Error("INVALID_CART");
     }
     const row = await env.DB.prepare(`SELECT p.id AS product_id, v.id AS variant_id, p.name, v.sku,
-      COALESCE(v.price_cents,p.price_cents) AS unit_price_cents, v.stock, c.slug AS category_slug
+      COALESCE(v.price_cents,p.price_cents) AS unit_price_cents, v.stock, c.slug AS category_slug, p.personalizable
       FROM products p JOIN product_variants v ON v.product_id=p.id LEFT JOIN categories c ON c.id=p.category_id
       WHERE p.id=? AND v.id=? AND p.active=1 AND v.active=1`).bind(item.product_id, item.variant_id).first<ProductRow>();
     if (!row || row.stock < quantity) throw new Error("OUT_OF_STOCK");
     const engravingText = item.personalization?.engraving_text?.trim() || "";
     const imageUploadId = item.personalization?.image_upload_id?.trim() || "";
-    if ((engravingText || imageUploadId) && row.category_slug !== "fotogravacao") throw new Error("INVALID_PERSONALIZATION");
+    if ((engravingText || imageUploadId) && !row.personalizable && row.category_slug !== "fotogravacao") throw new Error("INVALID_PERSONALIZATION");
     if (engravingText.length > 80) throw new Error("INVALID_PERSONALIZATION");
     if (imageUploadId) {
       const upload = await env.DB.prepare("SELECT id FROM personalization_uploads WHERE id=? AND product_id=? AND order_id IS NULL")
