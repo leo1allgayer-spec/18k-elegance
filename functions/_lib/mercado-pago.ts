@@ -120,6 +120,22 @@ async function calculateDiscount(env: Env, code: string | undefined, subtotal: n
   return { cents: Math.min(discount, subtotal), couponId: coupon.id };
 }
 
+export async function validateCartCoupon(request: Request, env: Env): Promise<Response> {
+  const body = await readJson<{ code?: string; items?: CheckoutItem[] }>(request);
+  const code = body.code?.trim().toUpperCase() || "";
+  if (!code) return apiError("Digite o código do cupom.", 400, "INVALID_COUPON");
+  try {
+    const products = await resolveItems(env, body.items || []);
+    const subtotal = products.reduce((sum, item) => sum + item.unit_price_cents * item.stock, 0);
+    const discount = await calculateDiscount(env, code, subtotal);
+    return json({ ok: true, coupon: { code, discount_cents: discount.cents }, subtotal_cents: subtotal, total_cents: subtotal - discount.cents });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "INVALID_COUPON";
+    if (code === "INVALID_COUPON") return apiError("Cupom inválido, expirado ou indisponível para este pedido.", 400, code);
+    return apiError("Não foi possível validar o cupom com esta sacola.", 400, code);
+  }
+}
+
 export async function createMercadoPagoCheckout(request: Request, env: Env): Promise<Response> {
   if (!env.MERCADO_PAGO_ACCESS_TOKEN) return apiError("O Mercado Pago ainda não está configurado.", 503, "PAYMENT_NOT_CONFIGURED");
   const body = await readJson<CheckoutBody>(request);

@@ -1,7 +1,7 @@
 import type { Env } from "../_lib/types";
 import { apiError, json, normalizeEmail, readJson } from "../_lib/http";
 import { clearSessionCookie, createSession, currentCustomer, deleteCurrentSession, hashPassword, sessionCookie, verifyPassword } from "../_lib/auth";
-import { createMercadoPagoCheckout, mercadoPagoDiagnostic, mercadoPagoWebhook, publicPaymentStatus } from "../_lib/mercado-pago";
+import { createMercadoPagoCheckout, mercadoPagoDiagnostic, mercadoPagoWebhook, publicPaymentStatus, validateCartCoupon } from "../_lib/mercado-pago";
 import { correiosConfigured, publicCorreiosQuote } from "../_lib/correios";
 import { blingCallback, blingConnect, blingStatus, disconnectBling } from "../_lib/bling";
 import { adminPersonalizationImage, uploadPersonalization } from "../_lib/personalization";
@@ -300,6 +300,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (method === "GET" && parts[0] === "products" && !parts[1]) return products(request, env);
   if (method === "GET" && parts[0] === "products" && parts[1]) return productBySlug(parts[1], env);
   if (method === "POST" && parts.join("/") === "checkout/mercado-pago") return createMercadoPagoCheckout(request, env);
+  if (method === "POST" && parts.join("/") === "coupons/validate") return validateCartCoupon(request, env);
   if (method === "POST" && parts.join("/") === "personalization/upload") return uploadPersonalization(request, env);
   if (method === "POST" && parts.join("/") === "shipping/correios/quote") return publicCorreiosQuote(request, env);
   if (method === "POST" && parts.join("/") === "payments/mercado-pago/webhook") return mercadoPagoWebhook(request, env);

@@ -164,6 +164,7 @@ document.querySelector(".add-cart")?.addEventListener("click", (event) => {
   }
   else cart.push({ name: button.dataset.product, price: Number(button.dataset.price) + (engravingText ? 29.90 : 0) + (personalizationUpload ? 49.90 : 0), image: button.dataset.image, qty,
     product_id: Number(button.dataset.id) || null, variant_id: Number(button.dataset.variant) || null, personalization });
+  localStorage.removeItem("elegance-coupon");
   saveCart(cart);
   button.textContent = "Adicionado à sacola ✓";
   setTimeout(() => { button.textContent = "Adicionar à sacola"; }, 1800);
@@ -175,16 +176,40 @@ function renderCart() {
   const cart = getCart();
   const safe = value => String(value || "").replace(/[&<>\"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   container.innerHTML = cart.map((item, index) => `<article class="cart-item"><img src="${item.image}" alt="${item.name}"><div><h3>${item.name}</h3><p>Quantidade: ${item.qty}</p>${item.personalization?.engraving_text?`<p class="cart-personalization"><b>Gravação:</b> ${safe(item.personalization.engraving_text)}</p>`:""}${item.personalization?.image_name?`<p class="cart-personalization"><b>Foto:</b> ${safe(item.personalization.image_name)}</p>`:""}<button data-remove="${index}">Remover</button></div><strong>${money(item.price * item.qty)}</strong></article>`).join("");
-  const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
-  document.querySelector("#cart-subtotal").textContent = money(total);
-  document.querySelector("#cart-total").textContent = money(total);
+  const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const subtotalCents = Math.round(subtotal * 100);
+  const savedCoupon = JSON.parse(localStorage.getItem("elegance-coupon") || "null");
+  const discountCents = savedCoupon?.subtotal_cents === subtotalCents ? Number(savedCoupon.discount_cents) || 0 : 0;
+  document.querySelector("#cart-subtotal").textContent = money(subtotal);
+  document.querySelector("#cart-total").textContent = money((subtotalCents - discountCents) / 100);
+  const discountRow = document.querySelector(".coupon-discount");
+  if (discountRow) { discountRow.hidden = !discountCents; document.querySelector("#cart-discount").textContent = `− ${money(discountCents / 100)}`; }
+  const couponInput = document.querySelector("#cart-coupon"); if (couponInput && savedCoupon?.code) couponInput.value = savedCoupon.code;
   document.querySelectorAll("[data-remove]").forEach((button) => button.addEventListener("click", () => {
     cart.splice(Number(button.dataset.remove), 1);
+    localStorage.removeItem("elegance-coupon");
     saveCart(cart);
     renderCart();
   }));
 }
 renderCart();
+
+document.querySelector("#apply-coupon")?.addEventListener("click", async () => {
+  const button = document.querySelector("#apply-coupon"), input = document.querySelector("#cart-coupon"), feedback = document.querySelector(".coupon-message");
+  const code = input.value.trim().toUpperCase(), cart = getCart();
+  if (!code) { feedback.textContent = "Digite o código do cupom."; return; }
+  button.disabled = true; button.textContent = "Validando…"; feedback.textContent = "";
+  try {
+    const items = cart.map(item => ({ product_id:Number(item.product_id), variant_id:Number(item.variant_id), quantity:Number(item.qty), personalization:item.personalization || undefined }));
+    const response = await fetch("/api/coupons/validate", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ code, items }) });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error?.message || "Cupom inválido.");
+    localStorage.setItem("elegance-coupon", JSON.stringify({ code:result.coupon.code, discount_cents:result.coupon.discount_cents, subtotal_cents:result.subtotal_cents }));
+    feedback.textContent = `Cupom aplicado: você economizou ${money(result.coupon.discount_cents / 100)}.`;
+    renderCart();
+  } catch (error) { localStorage.removeItem("elegance-coupon"); feedback.textContent = error.message; renderCart(); }
+  finally { button.disabled = false; button.textContent = "Aplicar"; }
+});
 
 let checkoutStep = 1;
 function updateCheckout() {
