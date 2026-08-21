@@ -4,6 +4,36 @@
   const message=document.createElement('p');message.className='checkout-message';message.setAttribute('aria-live','polite');document.querySelector('.checkout-actions').prepend(message);
   const fields=()=>Object.fromEntries(new FormData(form));
   const cartItems=()=>JSON.parse(localStorage.getItem('elegance-cart')||'[]').map(item=>({product_id:Number(item.product_id),variant_id:Number(item.variant_id),quantity:Number(item.qty),personalization:item.personalization||undefined}));
+  function setupPostalAutofill(){
+    const postal=form.elements.postal_code,street=form.elements.street,neighborhood=form.elements.neighborhood,cityState=form.elements.city_state,number=form.elements.number;
+    if(!postal||!street||!neighborhood||!cityState)return;
+    const status=document.createElement('small');status.className='postal-lookup-status';status.setAttribute('aria-live','polite');postal.closest('label')?.append(status);
+    let timer=null,controller=null,lastPostal='';
+    const lookup=async()=>{
+      const digits=String(postal.value||'').replace(/\D/g,'').slice(0,8);
+      postal.value=digits.length>5?`${digits.slice(0,5)}-${digits.slice(5)}`:digits;
+      if(digits.length!==8){status.textContent=digits?'Digite os 8 números do CEP.':'';return}
+      if(digits===lastPostal)return;
+      controller?.abort();controller=new AbortController();status.textContent='Buscando endereço…';
+      try{
+        const response=await fetch(`https://viacep.com.br/ws/${digits}/json/`,{signal:controller.signal});
+        if(!response.ok)throw new Error('CEP_LOOKUP_FAILED');
+        const address=await response.json();
+        if(address.erro)throw new Error('CEP_NOT_FOUND');
+        street.value=address.logradouro||street.value;
+        neighborhood.value=address.bairro||neighborhood.value;
+        cityState.value=[address.localidade,address.uf].filter(Boolean).join(' - ')||cityState.value;
+        [street,neighborhood,cityState].forEach(input=>input.dispatchEvent(new Event('input',{bubbles:true})));
+        lastPostal=digits;status.textContent='Endereço preenchido automaticamente. Confira e informe o número.';number?.focus();
+      }catch(error){
+        if(error.name==='AbortError')return;
+        status.textContent=error.message==='CEP_NOT_FOUND'?'CEP não encontrado. Confira os números.':'Não foi possível consultar agora. Preencha o endereço manualmente.';
+      }
+    };
+    postal.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(lookup,350)});
+    postal.addEventListener('blur',lookup);
+    if(String(postal.value||'').replace(/\D/g,'').length===8)lookup();
+  }
   function setupMotoboy(){
     const cityInput=form.elements.city_state,option=form.querySelector('.motoboy-checkout-option'),radio=option?.querySelector('input'),price=option?.querySelector('strong'),help=option?.querySelector('small'),link=form.querySelector('.motoboy-whatsapp');
     if(!cityInput||!option||!radio||!price||!link)return;
@@ -50,5 +80,5 @@
   }
   next.addEventListener('click',async()=>{const step=window.eleganceCheckout.step;if(step<3){if(validStep(step))window.eleganceCheckout.next();return}if(step===3)await createPayment()});
   back.addEventListener('click',()=>window.eleganceCheckout.back());
-  setupMotoboy();setupCorreios();
+  setupPostalAutofill();setupMotoboy();setupCorreios();
 })();
