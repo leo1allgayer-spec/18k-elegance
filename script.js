@@ -120,7 +120,17 @@ document.querySelectorAll("[data-qty]").forEach((button) => button.addEventListe
 let personalizationUpload = null;
 let personalizationObjectUrl = null;
 const personalizationInput = document.querySelector("#engraving-image");
-const engravingInput = document.querySelector("#engraving-text");
+let engravingInput = document.querySelector("#engraving-text");
+if (engravingInput?.tagName === "INPUT") {
+  const engravingTextarea = document.createElement("textarea");
+  engravingTextarea.id = engravingInput.id;
+  engravingTextarea.maxLength = Number(engravingInput.maxLength) || 80;
+  engravingTextarea.placeholder = engravingInput.placeholder;
+  engravingTextarea.rows = 3;
+  engravingTextarea.setAttribute("aria-label", "Texto que deseja gravar");
+  engravingInput.replaceWith(engravingTextarea);
+  engravingInput = engravingTextarea;
+}
 const personalizationMessage = document.querySelector(".personalization-message");
 const personalizationPreview = document.querySelector(".personalization-preview");
 const livePersonalization = document.querySelector(".live-personalization");
