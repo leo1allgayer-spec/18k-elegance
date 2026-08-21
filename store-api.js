@@ -3,10 +3,11 @@
   const esc=value=>String(value??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
   const api=async path=>{const response=await fetch(`/api/${path}`);if(!response.ok)throw new Error('API indisponível');return response.json()};
   function enablePhotoPersonalization(product){
-    const panel=document.querySelector('.photo-personalization'),add=document.querySelector('.add-cart');
+    const panel=document.querySelector('.photo-personalization'),add=document.querySelector('.add-cart'),gallery=document.querySelector('.main-product-image');
     const enabled=Boolean(product.personalizable)||product.category_slug==='fotogravacao';
     if(!panel||!add)return;
     panel.hidden=!enabled;add.dataset.personalizable=enabled?'true':'false';
+    if(gallery)gallery.dataset.previewMode=product.slug==='anel-personalizado-com-gravacao'?'ring':'standard';
   }
   function enableProductShipping(product,variant){
     const box=document.querySelector('.shipping-box'),input=box?.querySelector('.shipping-form input'),button=box?.querySelector('.shipping-form button'),options=box?.querySelector('.motoboy-option'),note=box?.querySelector('.simulation-note');

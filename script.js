@@ -118,14 +118,35 @@ document.querySelectorAll("[data-qty]").forEach((button) => button.addEventListe
   value.textContent = Math.max(1, Number(value.textContent) + Number(button.dataset.qty));
 }));
 let personalizationUpload = null;
+let personalizationObjectUrl = null;
 const personalizationInput = document.querySelector("#engraving-image");
+const engravingInput = document.querySelector("#engraving-text");
 const personalizationMessage = document.querySelector(".personalization-message");
 const personalizationPreview = document.querySelector(".personalization-preview");
+const livePersonalization = document.querySelector(".live-personalization");
+const liveEngravingText = document.querySelector(".live-engraving-text");
+const liveEngravingImage = document.querySelector(".live-engraving-image");
+function updateLivePersonalization() {
+  if (!livePersonalization || !liveEngravingText || !liveEngravingImage) return;
+  const text = engravingInput?.value.trim() || "";
+  liveEngravingText.textContent = text;
+  liveEngravingText.hidden = !text;
+  livePersonalization.hidden = !text && !personalizationObjectUrl;
+}
+engravingInput?.addEventListener("input", updateLivePersonalization);
 personalizationInput?.addEventListener("change", async () => {
   const file = personalizationInput.files?.[0];
   personalizationUpload = null;
-  if (!file) return;
-  if (file.size > 5 * 1024 * 1024) { personalizationMessage.textContent = "A imagem deve ter no máximo 5 MB."; personalizationInput.value = ""; return; }
+  if (personalizationObjectUrl) URL.revokeObjectURL(personalizationObjectUrl);
+  personalizationObjectUrl = null;
+  liveEngravingImage.hidden = true;
+  liveEngravingImage.removeAttribute("src");
+  if (!file) { liveEngravingImage.hidden = true; liveEngravingImage.removeAttribute("src"); updateLivePersonalization(); return; }
+  if (file.size > 5 * 1024 * 1024) { personalizationMessage.textContent = "A imagem deve ter no máximo 5 MB."; personalizationInput.value = ""; updateLivePersonalization(); return; }
+  personalizationObjectUrl = URL.createObjectURL(file);
+  liveEngravingImage.src = personalizationObjectUrl;
+  liveEngravingImage.hidden = false;
+  updateLivePersonalization();
   const add = document.querySelector(".add-cart");
   const data = new FormData(); data.append("product_id", add?.dataset.id || ""); data.append("image", file);
   personalizationMessage.textContent = "Enviando a imagem com segurança…";
@@ -135,7 +156,7 @@ personalizationInput?.addEventListener("change", async () => {
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error?.message || "Não foi possível enviar a imagem.");
     personalizationUpload = result.upload;
-    personalizationPreview.querySelector("img").src = URL.createObjectURL(file);
+    personalizationPreview.querySelector("img").src = personalizationObjectUrl;
     personalizationPreview.querySelector("b").textContent = file.name;
     personalizationPreview.hidden = false; personalizationMessage.textContent = "Imagem pronta para a fotogravação.";
   } catch (error) { personalizationMessage.textContent = error.message; personalizationInput.value = ""; }
@@ -143,6 +164,8 @@ personalizationInput?.addEventListener("change", async () => {
 });
 personalizationPreview?.querySelector("button")?.addEventListener("click", () => {
   personalizationUpload = null; personalizationInput.value = ""; personalizationPreview.hidden = true; personalizationMessage.textContent = "";
+  if (personalizationObjectUrl) URL.revokeObjectURL(personalizationObjectUrl);
+  personalizationObjectUrl = null; liveEngravingImage.hidden = true; liveEngravingImage.removeAttribute("src"); updateLivePersonalization();
 });
 document.querySelector(".add-cart")?.addEventListener("click", (event) => {
   const button = event.currentTarget;
