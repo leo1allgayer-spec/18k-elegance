@@ -227,6 +227,25 @@ function renderCart() {
 }
 renderCart();
 
+async function applyAutomaticFirstPurchaseCoupon(){
+  const feedback=document.querySelector(".coupon-message"),cart=getCart();
+  if(!feedback||!cart.length||localStorage.getItem("elegance-coupon"))return;
+  try{
+    const accountResponse=await fetch("/api/account",{credentials:"same-origin"});
+    if(!accountResponse.ok)return;
+    const account=await accountResponse.json();
+    if(!account.first_purchase_eligible)return;
+    const items=cart.map(item=>({product_id:Number(item.product_id),variant_id:Number(item.variant_id),quantity:Number(item.qty),personalization:item.personalization||undefined}));
+    const response=await fetch("/api/coupons/validate",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({code:"PRIMEIRAELEGANCE",items})});
+    const result=await response.json().catch(()=>({}));
+    if(!response.ok)return;
+    localStorage.setItem("elegance-coupon",JSON.stringify({code:result.coupon.code,discount_cents:result.coupon.discount_cents,subtotal_cents:result.subtotal_cents}));
+    feedback.textContent="Cupom de primeira compra aplicado automaticamente.";
+    renderCart();
+  }catch{}
+}
+applyAutomaticFirstPurchaseCoupon();
+
 document.querySelector("#apply-coupon")?.addEventListener("click", async () => {
   const button = document.querySelector("#apply-coupon"), input = document.querySelector("#cart-coupon"), feedback = document.querySelector(".coupon-message");
   const code = input.value.trim().toUpperCase(), cart = getCart();
@@ -288,3 +307,6 @@ document.addEventListener('click', async (event) => {
     window.prompt('Copie o cupom:', code);
   }
 });
+
+async function updateAccountLink(){try{const response=await fetch("/api/auth/me",{credentials:"same-origin"});if(!response.ok)return;const data=await response.json();if(!data.customer)return;document.querySelectorAll(".account-link").forEach(link=>{link.classList.add("logged-in");link.setAttribute("aria-label",`Minha conta — ${data.customer.name}`);});}catch{}}
+updateAccountLink();

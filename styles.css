@@ -67,3 +67,5 @@ html,body{max-width:100%;overflow-x:hidden}@media(min-width:641px){.hero-content
 @keyframes announcementScroll{to{transform:translateX(-33.333333%)}}
 @media(max-width:640px){.announcement{padding:0}.announcement-track{animation-duration:18s}.announcement-item{gap:12px;padding-right:12px;font-size:9px}.announcement-item button,.announcement-item b{font-size:9px;padding:5px 10px}}
 @media(prefers-reduced-motion:reduce){.announcement-track{animation:none}.announcement{overflow-x:auto}.announcement-item[aria-hidden="true"]{display:none}}
+
+.account-link svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6}.account-link.logged-in{color:#7de2b4!important}

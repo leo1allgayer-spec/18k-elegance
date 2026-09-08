@@ -7,6 +7,8 @@ import { blingCallback, blingConnect, blingStatus, disconnectBling } from "../_l
 import { adminPersonalizationImage, publicProductImage, uploadPersonalization, uploadProductImage } from "../_lib/personalization";
 
 type RegisterBody = { name?: string; email?: string; phone?: string; birth_date?: string; password?: string };
+type AccountBody = { name?: string; phone?: string; birth_date?: string };
+type AddressBody = { postal_code?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string };
 type LoginBody = { email?: string; password?: string };
 type ProductBody = {
   name?: string; category_id?: number | null; sku?: string; description?: string;
@@ -251,19 +253,58 @@ async function register(request: Request, env: Env): Promise<Response> {
   if (!/^\S+@\S+\.\S+$/.test(email)) return apiError("Informe um e-mail válido.");
   if (password.length < 8) return apiError("A senha deve ter pelo menos 8 caracteres.");
   if (body.birth_date && !/^\d{4}-\d{2}-\d{2}$/.test(body.birth_date)) return apiError("Informe uma data de nascimento válida.");
-  const existing = await env.DB.prepare("SELECT id FROM customers WHERE email = ?").bind(email).first();
-  if (existing) return apiError("Já existe um cadastro com este e-mail.", 409, "EMAIL_EXISTS");
+  const existing = await env.DB.prepare("SELECT id,account_claimed FROM customers WHERE email = ?").bind(email).first<{ id: number; account_claimed: number }>();
   const credentials = await hashPassword(password);
-  const result = await env.DB.prepare(`INSERT INTO customers(name, email, phone, birth_date, password_hash, password_salt)
-    VALUES (?, ?, ?, ?, ?, ?)`)
-    .bind(name, email, body.phone?.trim() || null, body.birth_date || null, credentials.hash, credentials.salt).run();
-  const customerId = Number(result.meta.last_row_id);
-  await env.DB.batch([
-    env.DB.prepare("INSERT INTO carts(customer_id) VALUES (?)").bind(customerId),
-    env.DB.prepare("INSERT INTO loyalty_accounts(customer_id) VALUES (?)").bind(customerId),
-  ]);
+  let customerId: number;
+  if (existing?.account_claimed) return apiError("Já existe uma conta com este e-mail.", 409, "EMAIL_EXISTS");
+  if (existing) {
+    customerId = existing.id;
+    await env.DB.prepare("UPDATE customers SET name=?,phone=?,birth_date=?,password_hash=?,password_salt=?,account_claimed=1,active=1,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+      .bind(name, body.phone?.trim() || null, body.birth_date || null, credentials.hash, credentials.salt, customerId).run();
+  } else {
+    const result = await env.DB.prepare(`INSERT INTO customers(name,email,phone,birth_date,password_hash,password_salt,account_claimed)
+      VALUES(?,?,?,?,?,?,1)`).bind(name, email, body.phone?.trim() || null, body.birth_date || null, credentials.hash, credentials.salt).run();
+    customerId = Number(result.meta.last_row_id);
+    await env.DB.batch([env.DB.prepare("INSERT INTO carts(customer_id) VALUES (?)").bind(customerId),env.DB.prepare("INSERT INTO loyalty_accounts(customer_id) VALUES (?)").bind(customerId)]);
+  }
   const session = await createSession(env, customerId);
   return json({ ok: true, customer: { id: customerId, name, email, role: "customer" } }, 201, { "Set-Cookie": sessionCookie(session.token, session.expiresAt) });
+}
+
+async function accountOverview(request: Request, env: Env): Promise<Response> {
+  const customer = await currentCustomer(request, env);
+  if (!customer || customer.role !== "customer") return apiError("Entre na sua conta para continuar.", 401, "UNAUTHENTICATED");
+  const [address, orders, loyalty, paid] = await Promise.all([
+    env.DB.prepare("SELECT id,postal_code,street,number,complement,neighborhood,city,state FROM addresses WHERE customer_id=? ORDER BY is_default DESC,id DESC LIMIT 1").bind(customer.id).first(),
+    env.DB.prepare("SELECT order_number,status,total_cents,shipping_method,tracking_code,created_at FROM orders WHERE customer_id=? ORDER BY created_at DESC LIMIT 30").bind(customer.id).all(),
+    env.DB.prepare("SELECT purchase_count,rewards_issued FROM loyalty_accounts WHERE customer_id=?").bind(customer.id).first(),
+    env.DB.prepare("SELECT id FROM orders WHERE customer_id=? AND status IN ('paid','preparing','shipped','delivered','refunded') LIMIT 1").bind(customer.id).first(),
+  ]);
+  return json({ ok: true, customer, address: address || null, orders: orders.results, loyalty: loyalty || { purchase_count: 0, rewards_issued: 0 }, first_purchase_eligible: !paid });
+}
+
+async function updateAccount(request: Request, env: Env): Promise<Response> {
+  const customer = await currentCustomer(request, env);
+  if (!customer || customer.role !== "customer") return apiError("Entre na sua conta para continuar.", 401, "UNAUTHENTICATED");
+  const body = await readJson<AccountBody>(request), name = body.name?.trim() || "";
+  if (name.length < 2) return apiError("Informe seu nome completo.");
+  if (body.birth_date && !/^\d{4}-\d{2}-\d{2}$/.test(body.birth_date)) return apiError("Informe uma data de nascimento válida.");
+  await env.DB.prepare("UPDATE customers SET name=?,phone=?,birth_date=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(name, body.phone?.trim() || null, body.birth_date || null, customer.id).run();
+  return json({ ok: true });
+}
+
+async function saveAccountAddress(request: Request, env: Env): Promise<Response> {
+  const customer = await currentCustomer(request, env);
+  if (!customer || customer.role !== "customer") return apiError("Entre na sua conta para continuar.", 401, "UNAUTHENTICATED");
+  const body = await readJson<AddressBody>(request);
+  const postalCode = String(body.postal_code || "").replace(/\D/g, ""), state = body.state?.trim().toUpperCase() || "";
+  if (postalCode.length !== 8 || !body.street?.trim() || !body.number?.trim() || !body.neighborhood?.trim() || !body.city?.trim() || !/^[A-Z]{2}$/.test(state)) return apiError("Preencha o endereço completo.");
+  const existing = await env.DB.prepare("SELECT id FROM addresses WHERE customer_id=? ORDER BY is_default DESC,id DESC LIMIT 1").bind(customer.id).first<{ id: number }>();
+  if (existing) await env.DB.prepare("UPDATE addresses SET recipient=?,postal_code=?,street=?,number=?,complement=?,neighborhood=?,city=?,state=?,is_default=1 WHERE id=? AND customer_id=?")
+    .bind(customer.name, postalCode, body.street.trim(), body.number.trim(), body.complement?.trim() || null, body.neighborhood.trim(), body.city.trim(), state, existing.id, customer.id).run();
+  else await env.DB.prepare("INSERT INTO addresses(customer_id,label,recipient,postal_code,street,number,complement,neighborhood,city,state,is_default) VALUES(?,'Principal',?,?,?,?,?,?,?,?,1)")
+    .bind(customer.id, customer.name, postalCode, body.street.trim(), body.number.trim(), body.complement?.trim() || null, body.neighborhood.trim(), body.city.trim(), state).run();
+  return json({ ok: true });
 }
 
 async function login(request: Request, env: Env): Promise<Response> {
@@ -329,6 +370,9 @@ async function route(request: Request, env: Env): Promise<Response> {
     const customer = await currentCustomer(request, env);
     return customer ? json({ ok: true, customer }) : apiError("Faça login para continuar.", 401, "UNAUTHENTICATED");
   }
+  if (method === "GET" && parts.join("/") === "account") return accountOverview(request, env);
+  if (method === "PUT" && parts.join("/") === "account") return updateAccount(request, env);
+  if (method === "PUT" && parts.join("/") === "account/address") return saveAccountAddress(request, env);
   if (parts[0] === "admin") {
     const admin = await requireAdmin(request, env);
     if (!admin) return apiError("Acesso restrito à administração.", 403, "FORBIDDEN");

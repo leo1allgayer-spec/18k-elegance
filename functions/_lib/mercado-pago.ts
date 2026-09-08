@@ -1,6 +1,6 @@
 import type { Env } from "./types";
 import { apiError, json, normalizeEmail, readJson } from "./http";
-import { hashPassword } from "./auth";
+import { currentCustomer, hashPassword } from "./auth";
 import { calculateCorreiosQuotes } from "./correios";
 
 type CheckoutItem = { product_id?: number; variant_id?: number; quantity?: number; personalization?: { engraving_text?: string; image_upload_id?: string; image_name?: string } };
@@ -108,16 +108,23 @@ async function resolveItems(env: Env, items: CheckoutItem[]): Promise<ProductRow
   return resolved;
 }
 
-async function calculateDiscount(env: Env, code: string | undefined, subtotal: number) {
-  if (!code?.trim()) return { cents: 0, couponId: null as number | null };
+const FIRST_PURCHASE_COUPON = "PRIMEIRAELEGANCE";
+
+async function firstPurchaseEligible(env: Env, customerId: number): Promise<boolean> {
+  const purchase = await env.DB.prepare("SELECT id FROM orders WHERE customer_id=? AND status IN ('paid','preparing','shipped','delivered','refunded') LIMIT 1").bind(customerId).first();
+  return !purchase;
+}
+
+async function calculateDiscount(env: Env, code: string | undefined, subtotal: number, customerId?: number) {
+  if (!code?.trim()) return { cents: 0, couponId: null as number | null, code: null as string | null };
+  const normalizedCode = code.trim().toUpperCase();
+  if (normalizedCode === FIRST_PURCHASE_COUPON && (!customerId || !(await firstPurchaseEligible(env, customerId)))) throw new Error("FIRST_PURCHASE_USED");
   const coupon = await env.DB.prepare(`SELECT id,type,value,minimum_cents,max_uses,uses FROM coupons
     WHERE code=? COLLATE NOCASE AND active=1 AND (starts_at IS NULL OR starts_at<=CURRENT_TIMESTAMP)
-    AND (expires_at IS NULL OR expires_at>=CURRENT_TIMESTAMP)`).bind(code.trim()).first<{
-      id: number; type: "percent" | "fixed"; value: number; minimum_cents: number; max_uses: number | null; uses: number;
-    }>();
+    AND (expires_at IS NULL OR expires_at>=CURRENT_TIMESTAMP)`).bind(normalizedCode).first<{ id: number; type: "percent" | "fixed"; value: number; minimum_cents: number; max_uses: number | null; uses: number }>();
   if (!coupon || subtotal < coupon.minimum_cents || (coupon.max_uses != null && coupon.uses >= coupon.max_uses)) throw new Error("INVALID_COUPON");
   const discount = coupon.type === "percent" ? Math.floor(subtotal * coupon.value / 100) : coupon.value;
-  return { cents: Math.min(discount, subtotal), couponId: coupon.id };
+  return { cents: Math.min(discount, subtotal), couponId: coupon.id, code: normalizedCode };
 }
 
 export async function validateCartCoupon(request: Request, env: Env): Promise<Response> {
@@ -127,10 +134,12 @@ export async function validateCartCoupon(request: Request, env: Env): Promise<Re
   try {
     const products = await resolveItems(env, body.items || []);
     const subtotal = products.reduce((sum, item) => sum + item.unit_price_cents * item.stock, 0);
-    const discount = await calculateDiscount(env, code, subtotal);
+    const customer = await currentCustomer(request, env);
+    const discount = await calculateDiscount(env, code, subtotal, customer?.id);
     return json({ ok: true, coupon: { code, discount_cents: discount.cents }, subtotal_cents: subtotal, total_cents: subtotal - discount.cents });
   } catch (error) {
     const code = error instanceof Error ? error.message : "INVALID_COUPON";
+    if (code === "FIRST_PURCHASE_USED") return apiError("Este cupom é exclusivo para a primeira compra da cliente conectada.", 400, code);
     if (code === "INVALID_COUPON") return apiError("Cupom inválido, expirado ou indisponível para este pedido.", 400, code);
     return apiError("Não foi possível validar o cupom com esta sacola.", 400, code);
   }
@@ -153,9 +162,15 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
     return apiError("A sacola contém itens inválidos.", 400, code);
   }
   const subtotal = products.reduce((sum, item) => sum + item.unit_price_cents * item.stock, 0);
+  const id = await customerId(env, customer);
+  const automaticFirstPurchase = !body.coupon?.trim() && await firstPurchaseEligible(env, id);
+  const couponCode = body.coupon?.trim() || (automaticFirstPurchase ? FIRST_PURCHASE_COUPON : undefined);
   let discount: Awaited<ReturnType<typeof calculateDiscount>>;
-  try { discount = await calculateDiscount(env, body.coupon, subtotal); }
-  catch { return apiError("O cupom informado não é válido.", 400, "INVALID_COUPON"); }
+  try { discount = await calculateDiscount(env, couponCode, subtotal, id); }
+  catch (error) {
+    const code = error instanceof Error ? error.message : "INVALID_COUPON";
+    return apiError(code === "FIRST_PURCHASE_USED" ? "O cupom de primeira compra já foi utilizado." : "O cupom informado não é válido.", 400, code);
+  }
   const shippingMethod = body.shipping?.method || "pickup";
   let shippingCents = 0;
   if (shippingMethod === "motoboy") {
@@ -175,11 +190,10 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
   }
   const total = subtotal - discount.cents + shippingCents;
   if (total < 1) return apiError("O total do pedido é inválido.");
-  const id = await customerId(env, customer);
   const orderNumber = `ELG-${Date.now().toString(36).toUpperCase()}-${crypto.randomUUID().slice(0, 5).toUpperCase()}`;
   const address = shippingMethod === "pickup" ? null : JSON.stringify(body.shipping || {});
-  const orderResult = await env.DB.prepare(`INSERT INTO orders(order_number,customer_id,status,subtotal_cents,discount_cents,shipping_cents,total_cents,shipping_method,shipping_address_json)
-    VALUES(?,?,'pending_payment',?,?,?,?,?,?)`).bind(orderNumber, id, subtotal, discount.cents, shippingCents, total, shippingMethod, address).run();
+  const orderResult = await env.DB.prepare(`INSERT INTO orders(order_number,customer_id,status,subtotal_cents,discount_cents,shipping_cents,total_cents,shipping_method,shipping_address_json,coupon_id)
+    VALUES(?,?,'pending_payment',?,?,?,?,?,?,?)`).bind(orderNumber, id, subtotal, discount.cents, shippingCents, total, shippingMethod, address, discount.couponId).run();
   const orderId = Number(orderResult.meta.last_row_id);
   await env.DB.batch([
     ...products.map(item => env.DB.prepare(`INSERT INTO order_items(order_id,product_id,variant_id,product_name,sku,unit_price_cents,quantity,personalization_json,personalization_fee_cents)
@@ -189,10 +203,13 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
   ]);
   const origin = new URL(request.url).origin;
   const preferenceBody = {
-    items: [
-      ...products.map(item => ({ id: String(item.product_id), title: item.personalization_json ? `${item.name} - Personalizado` : item.name, quantity: item.stock, currency_id: "BRL", unit_price: item.unit_price_cents / 100 })),
-      ...(shippingCents ? [{ id: "shipping", title: shippingMethod === "motoboy" ? "Entrega por motoboy" : "Frete Correios", quantity: 1, currency_id: "BRL", unit_price: shippingCents / 100 }] : []),
-    ],
+    items: [{
+      id: orderNumber,
+      title: discount.cents ? "Pedido Elegance 18K (" + discount.code + ")" : "Pedido Elegance 18K",
+      quantity: 1,
+      currency_id: "BRL",
+      unit_price: total / 100,
+    }],
     payer: { name: customer.name!.trim(), email, phone: { number: digits(customer.phone || "") }, identification: { type: "CPF", number: digits(customer.cpf || "") } },
     external_reference: orderNumber,
     metadata: { order_id: orderId, order_number: orderNumber },
@@ -253,8 +270,8 @@ export async function mercadoPagoWebhook(request: Request, env: Env): Promise<Re
     return apiError("Assinatura inválida.", 401, "INVALID_SIGNATURE");
   }
   const payment = await mercadoPago<MercadoPagoPayment>(env, `/v1/payments/${dataId}`);
-  const order = await env.DB.prepare("SELECT id,status,total_cents FROM orders WHERE order_number=?")
-    .bind(payment.external_reference || "").first<{ id: number; status: string; total_cents: number }>();
+  const order = await env.DB.prepare("SELECT id,status,total_cents,customer_id,coupon_id FROM orders WHERE order_number=?")
+    .bind(payment.external_reference || "").first<{ id: number; status: string; total_cents: number; customer_id: number; coupon_id: number | null }>();
   if (!order || cents(payment.transaction_amount) !== order.total_cents) return apiError("Pagamento não corresponde ao pedido.", 409, "PAYMENT_MISMATCH");
   const mapped = payment.status === "approved" ? "paid" : ["refunded", "charged_back"].includes(payment.status) ? "refunded" : ["cancelled", "rejected"].includes(payment.status) ? "cancelled" : "pending_payment";
   const paymentStatus = payment.status === "approved" ? "approved" : payment.status;
@@ -264,8 +281,11 @@ export async function mercadoPagoWebhook(request: Request, env: Env): Promise<Re
     const changed = await env.DB.prepare("UPDATE orders SET status='paid',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status!='paid'").bind(order.id).run();
     if (changed.meta.changes) {
       const items = await env.DB.prepare("SELECT variant_id,quantity FROM order_items WHERE order_id=? AND variant_id IS NOT NULL").bind(order.id).all<{ variant_id: number; quantity: number }>();
-      await env.DB.batch(items.results.map(item => env.DB.prepare("UPDATE product_variants SET stock=MAX(0,stock-?),updated_at=CURRENT_TIMESTAMP WHERE id=?")
-        .bind(item.quantity, item.variant_id)));
+      await env.DB.batch([
+        ...items.results.map(item => env.DB.prepare("UPDATE product_variants SET stock=MAX(0,stock-?),updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(item.quantity, item.variant_id)),
+        env.DB.prepare("UPDATE loyalty_accounts SET purchase_count=purchase_count+1,updated_at=CURRENT_TIMESTAMP WHERE customer_id=?").bind(order.customer_id),
+        ...(order.coupon_id ? [env.DB.prepare("UPDATE coupons SET uses=uses+1 WHERE id=?").bind(order.coupon_id)] : []),
+      ]);
     }
   } else if (mapped !== "paid") {
     await env.DB.prepare("UPDATE orders SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status NOT IN ('shipped','delivered')").bind(mapped, order.id).run();
