@@ -4,7 +4,7 @@ import { clearSessionCookie, createSession, currentCustomer, deleteCurrentSessio
 import { createMercadoPagoCheckout, mercadoPagoDiagnostic, mercadoPagoWebhook, publicPaymentStatus, validateCartCoupon } from "../_lib/mercado-pago";
 import { correiosConfigured, publicCorreiosQuote } from "../_lib/correios";
 import { blingCallback, blingConnect, blingStatus, disconnectBling } from "../_lib/bling";
-import { adminPersonalizationImage, uploadPersonalization } from "../_lib/personalization";
+import { adminPersonalizationImage, publicProductImage, uploadPersonalization, uploadProductImage } from "../_lib/personalization";
 
 type RegisterBody = { name?: string; email?: string; phone?: string; birth_date?: string; password?: string };
 type LoginBody = { email?: string; password?: string };
@@ -68,14 +68,26 @@ async function uniqueSlug(env: Env, table: "products" | "categories", name: stri
   return `${base}-${Date.now()}`;
 }
 
+async function uniqueSku(env: Env, name: string) {
+  const words = slugify(name).split("-").filter(Boolean);
+  const prefix = (words.slice(0, 3).map(word => word.slice(0, 4)).join("-") || "PRODUTO").toUpperCase().slice(0, 22);
+  let sku = prefix;
+  for (let suffix = 2; suffix < 1000; suffix++) {
+    const found = await env.DB.prepare("SELECT id FROM products WHERE sku=?").bind(sku).first();
+    if (!found) return sku;
+    sku = prefix + "-" + suffix;
+  }
+  return prefix + "-" + Date.now().toString(36).toUpperCase();
+}
+
 async function saveProduct(request: Request, env: Env, id?: number): Promise<Response> {
   const body = await readJson<ProductBody>(request);
   const name = body.name?.trim() || "";
-  const sku = body.sku?.trim().toUpperCase() || "";
+  const sku = body.sku?.trim().toUpperCase() || await uniqueSku(env, name);
   const price = integer(body.price_cents, -1);
   const stock = integer(body.stock, 0);
   if (name.length < 2) return apiError("Informe o nome do produto.");
-  if (!sku) return apiError("Informe o SKU do produto.");
+
   if (price < 0) return apiError("Informe um preço válido.");
   if (stock < 0) return apiError("O estoque não pode ser negativo.");
   if (body.category_id) {
@@ -110,7 +122,7 @@ async function saveProduct(request: Request, env: Env, id?: number): Promise<Res
     if (body.image_url.trim()) await env.DB.prepare("INSERT INTO product_images(product_id,url,alt_text,sort_order) VALUES(?,?,?,0)")
       .bind(productId, body.image_url.trim(), name).run();
   }
-  return json({ ok: true, id: productId, slug }, id ? 200 : 201);
+  return json({ ok: true, id: productId, slug, sku }, id ? 200 : 201);
 }
 
 async function deleteProduct(env: Env, id: number): Promise<Response> {
@@ -302,6 +314,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (method === "POST" && parts.join("/") === "checkout/mercado-pago") return createMercadoPagoCheckout(request, env);
   if (method === "POST" && parts.join("/") === "coupons/validate") return validateCartCoupon(request, env);
   if (method === "POST" && parts.join("/") === "personalization/upload") return uploadPersonalization(request, env);
+  if (method === "GET" && parts[0] === "product-images" && parts[1] && parts[2]) return publicProductImage(env, integer(parts[1]), parts[2]);
   if (method === "POST" && parts.join("/") === "shipping/correios/quote") return publicCorreiosQuote(request, env);
   if (method === "POST" && parts.join("/") === "payments/mercado-pago/webhook") return mercadoPagoWebhook(request, env);
   if (method === "GET" && parts.join("/") === "payments/mercado-pago/diagnostic") return mercadoPagoDiagnostic(env);
@@ -325,6 +338,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (method === "DELETE" && parts.join("/") === "admin/integrations/bling") return disconnectBling(env);
     if (method === "GET" && parts[1] === "products") return adminProducts(env);
     if (method === "POST" && parts[1] === "products" && !parts[2]) return saveProduct(request, env);
+    if (method === "POST" && parts[1] === "products" && parts[2] && parts[3] === "image") return uploadProductImage(request, env, integer(parts[2]));
     if (method === "PUT" && parts[1] === "products" && parts[2]) return saveProduct(request, env, integer(parts[2]));
     if (method === "DELETE" && parts[1] === "products" && parts[2]) return deleteProduct(env, integer(parts[2]));
     if (method === "GET" && parts[1] === "categories") return adminCategories(env);
