@@ -274,3 +274,17 @@ document.querySelector(".tracking-form")?.addEventListener("submit", (event) => 
   event.preventDefault();
   event.currentTarget.querySelector(".tracking-feedback").textContent = "Código recebido. O acompanhamento real será ativado com a integração do back-end.";
 });
+
+
+document.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-copy-coupon]');
+  if (!button) return;
+  const code = button.dataset.copyCoupon;
+  try {
+    await navigator.clipboard.writeText(code);
+    button.innerHTML = 'CUPOM COPIADO: <strong>' + code + '</strong>';
+    window.setTimeout(() => { button.innerHTML = 'CUPOM: <strong>' + code + '</strong>'; }, 2200);
+  } catch {
+    window.prompt('Copie o cupom:', code);
+  }
+});
