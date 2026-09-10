@@ -195,7 +195,7 @@ document.querySelector(".add-cart")?.addEventListener("click", (event) => {
     existing.product_id = Number(button.dataset.id) || existing.product_id || null;
     existing.variant_id = Number(button.dataset.variant) || existing.variant_id || null;
   }
-  else cart.push({ name: button.dataset.product, price: Number(button.dataset.price) + (engravingText ? 29.90 : 0) + (personalizationUpload ? 49.90 : 0), image: button.dataset.image, qty,
+  else cart.push({ name: button.dataset.product, price: Number(button.dataset.price) + (engravingText ? (Number(button.dataset.engravingTextPrice)||0)/100 : 0) + (personalizationUpload ? (Number(button.dataset.engravingImagePrice)||0)/100 : 0), image: button.dataset.image, qty,
     product_id: Number(button.dataset.id) || null, variant_id: Number(button.dataset.variant) || null, personalization });
   localStorage.removeItem("elegance-coupon");
   saveCart(cart);

@@ -4,9 +4,15 @@
   const api=async path=>{const response=await fetch(`/api/${path}`);if(!response.ok)throw new Error('API indisponível');return response.json()};
   function enablePhotoPersonalization(product){
     const panel=document.querySelector('.photo-personalization'),add=document.querySelector('.add-cart'),gallery=document.querySelector('.main-product-image');
-    const enabled=Boolean(product.personalizable)||product.category_slug==='fotogravacao';
+    const textEnabled=Boolean(product.engraving_text_enabled),imageEnabled=Boolean(product.engraving_image_enabled),enabled=textEnabled||imageEnabled;
     if(!panel||!add)return;
-    panel.hidden=!enabled;add.dataset.personalizable=enabled?'true':'false';
+    const textField=panel.querySelector('#engraving-text')?.closest('label'),imageField=panel.querySelector('#engraving-image')?.closest('label');
+    panel.hidden=!enabled;if(textField)textField.hidden=!textEnabled;if(imageField)imageField.hidden=!imageEnabled;
+    const textPrice=textField?.querySelector('strong'),imagePrice=imageField?.querySelector('strong');
+    if(textPrice)textPrice.textContent='+ '+money(product.engraving_text_price_cents||0);
+    if(imagePrice)imagePrice.textContent='+ '+money(product.engraving_image_price_cents||0);
+    add.dataset.personalizable=enabled?'true':'false';add.dataset.engravingTextEnabled=textEnabled?'true':'false';add.dataset.engravingImageEnabled=imageEnabled?'true':'false';
+    add.dataset.engravingTextPrice=String(Number(product.engraving_text_price_cents)||0);add.dataset.engravingImagePrice=String(Number(product.engraving_image_price_cents)||0);
     if(gallery)gallery.dataset.previewMode=product.slug==='anel-personalizado-com-gravacao'?'ring':'standard';
   }
   function enableProductShipping(product,variant){
@@ -65,7 +71,17 @@
       const main=document.querySelector('#detail-image');main.src=image;main.alt=product.name;
       document.querySelector('.thumbs').innerHTML=product.images?.length?product.images.map((item,index)=>`<button class="${index?'':'active'}"><img src="${esc(item.url)}" alt="${esc(item.alt_text||product.name)}"></button>`).join(''):`<button class="active"><img src="${esc(image)}" alt="${esc(product.name)}"></button>`;
       document.querySelector('.breadcrumb').textContent=`Início / ${product.category_name||'Joias'} / ${product.name}`;
-      document.querySelector('.description').textContent=product.description||'Semijoia Elegance com acabamento premium e garantia de 1 ano.';
+      document.querySelector('.description').textContent=product.description||'Semijoia Elegance com acabamento premium.';
+      const detailList=document.querySelector('#product-details'),details=[
+        product.finish&&['Acabamento',product.finish],
+        product.piece_length&&['Comprimento',product.piece_length],
+        Number(product.weight_grams)>0&&['Peso',Number(product.weight_grams).toLocaleString('pt-BR')+' g'],
+        product.material&&['Matéria-prima',product.material],
+        product.coating&&['Proteção',product.coating],
+        Number(product.warranty_months)>0&&['Garantia',product.warranty_months+' meses no banho'],
+      ].filter(Boolean);
+      if(detailList)detailList.innerHTML=details.length?'<dl>'+details.map(item=>'<div><dt>'+esc(item[0])+'</dt><dd>'+esc(item[1])+'</dd></div>').join('')+'</dl>':'<p>Consulte os detalhes desta peça com nossa equipe.</p>';
+      const guarantee=document.querySelector('.guarantee-note');if(guarantee)guarantee.textContent=Number(product.warranty_months)>0?'◇ Garantia de '+product.warranty_months+' meses':'◇ Qualidade Elegance';
       const pix=document.querySelector('.pix-price');pix.textContent=product.pix_price_cents?`${money(product.pix_price_cents)} no Pix`:'Consulte as condições de pagamento no checkout.';
       const add=document.querySelector('.add-cart');add.dataset.product=product.name;add.dataset.price=(product.price_cents/100).toFixed(2);add.dataset.image=image;add.dataset.id=String(product.id);add.dataset.variant=String(variant?.id||'');add.disabled=!variant||variant.stock<1;add.querySelector('span').textContent=add.disabled?'Sem estoque':'→';
       enablePhotoPersonalization(product);

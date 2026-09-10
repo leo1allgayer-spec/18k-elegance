@@ -18,6 +18,7 @@ type CheckoutBody = {
 type ProductRow = {
   product_id: number; variant_id: number; name: string; sku: string;
   unit_price_cents: number; stock: number; category_slug: string | null; personalizable: number;
+  engraving_text_enabled: number; engraving_text_price_cents: number; engraving_image_enabled: number; engraving_image_price_cents: number;
   personalization_json: string | null; personalization_fee_cents: number; image_upload_id: string | null;
 };
 
@@ -87,20 +88,22 @@ async function resolveItems(env: Env, items: CheckoutItem[]): Promise<ProductRow
       throw new Error("INVALID_CART");
     }
     const row = await env.DB.prepare(`SELECT p.id AS product_id, v.id AS variant_id, p.name, v.sku,
-      COALESCE(v.price_cents,p.price_cents) AS unit_price_cents, v.stock, c.slug AS category_slug, p.personalizable
+      COALESCE(v.price_cents,p.price_cents) AS unit_price_cents, v.stock, c.slug AS category_slug, p.personalizable,
+      p.engraving_text_enabled, p.engraving_text_price_cents, p.engraving_image_enabled, p.engraving_image_price_cents
       FROM products p JOIN product_variants v ON v.product_id=p.id LEFT JOIN categories c ON c.id=p.category_id
       WHERE p.id=? AND v.id=? AND p.active=1 AND v.active=1`).bind(item.product_id, item.variant_id).first<ProductRow>();
     if (!row || row.stock < quantity) throw new Error("OUT_OF_STOCK");
     const engravingText = item.personalization?.engraving_text?.trim() || "";
     const imageUploadId = item.personalization?.image_upload_id?.trim() || "";
-    if ((engravingText || imageUploadId) && !row.personalizable && row.category_slug !== "fotogravacao") throw new Error("INVALID_PERSONALIZATION");
+    if (engravingText && !row.engraving_text_enabled) throw new Error("INVALID_PERSONALIZATION_TEXT");
+    if (imageUploadId && !row.engraving_image_enabled) throw new Error("INVALID_PERSONALIZATION_IMAGE");
     if (engravingText.length > 80) throw new Error("INVALID_PERSONALIZATION");
     if (imageUploadId) {
       const upload = await env.DB.prepare("SELECT id FROM personalization_uploads WHERE id=? AND product_id=? AND order_id IS NULL")
         .bind(imageUploadId, row.product_id).first();
       if (!upload) throw new Error("INVALID_PERSONALIZATION_IMAGE");
     }
-    const fee = (engravingText ? 2990 : 0) + (imageUploadId ? 4990 : 0);
+    const fee = (engravingText ? row.engraving_text_price_cents : 0) + (imageUploadId ? row.engraving_image_price_cents : 0);
     const personalization = engravingText || imageUploadId ? { engraving_text: engravingText || null, image_upload_id: imageUploadId || null, image_name: item.personalization?.image_name?.slice(0, 160) || null } : null;
     resolved.push({ ...row, unit_price_cents: row.unit_price_cents + fee, stock: quantity, personalization_json: personalization ? JSON.stringify(personalization) : null, personalization_fee_cents: fee, image_upload_id: imageUploadId || null });
   }
