@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS product_reviews (product_id INTEGER NOT NULL REFERENCES products(id),customer_id INTEGER NOT NULL REFERENCES customers(id),rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),comment TEXT NOT NULL CHECK(length(comment)<=2000),updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(product_id,customer_id));

@@ -84,6 +84,7 @@
       const guarantee=document.querySelector('.guarantee-note');if(guarantee)guarantee.textContent=Number(product.warranty_months)>0?'◇ Garantia de '+product.warranty_months+' meses':'◇ Qualidade Elegance';
       const pix=document.querySelector('.pix-price');pix.textContent=product.pix_price_cents?`${money(product.pix_price_cents)} no Pix`:'Consulte as condições de pagamento no checkout.';
       const add=document.querySelector('.add-cart');add.dataset.product=product.name;add.dataset.price=(product.price_cents/100).toFixed(2);add.dataset.image=image;add.dataset.id=String(product.id);add.dataset.variant=String(variant?.id||'');add.disabled=!variant||variant.stock<1;add.querySelector('span').textContent=add.disabled?'Sem estoque':'→';
+      window.loadProductReviews?.(product);
       enablePhotoPersonalization(product);
       const finish=document.querySelector('.finish-choice span');if(finish)finish.textContent=variant?.finish||'Dourado 18K';
       enableProductShipping(product,variant);
