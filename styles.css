@@ -60,12 +60,12 @@ html,body{max-width:100%;overflow-x:hidden}@media(min-width:641px){.hero-content
 /* Faixa promocional rotativa */
 .announcement{display:flex;justify-content:center;height:40px;padding:0 12px;position:relative;white-space:normal;text-align:center}.header{top:40px}
 .announcement{overflow:hidden;justify-content:flex-start}.announcement-track{width:max-content;height:100%;display:flex;align-items:center;justify-content:flex-start;animation:announcementScroll 20s linear infinite;will-change:transform}
-.announcement-item{width:100vw;flex:0 0 100vw;display:flex;align-items:center;justify-content:center;gap:24px;font:600 11px/1.4 Manrope,sans-serif;letter-spacing:.04em}
+.announcement-item{min-width:100vw;width:max-content;flex:0 0 auto;padding:0 32px;display:flex;align-items:center;justify-content:center;gap:32px;white-space:nowrap;font:600 11px/1.4 Manrope,sans-serif;letter-spacing:.04em}
 .announcement-item button,.announcement-item b{border:1px dashed #d1b77f;background:#d1b77f;color:#050505;border-radius:999px;padding:5px 13px;font:700 10px/1 Manrope,sans-serif;letter-spacing:.06em;white-space:nowrap}
 .announcement-item button{cursor:pointer}
 .announcement-item button:focus-visible{outline:2px solid #fff;outline-offset:2px}
 @keyframes announcementScroll{to{transform:translateX(-25%)}}
-@media(max-width:640px){.announcement{height:88px;padding:8px 10px}.announcement-item{flex-direction:column;gap:4px;font-size:10px;letter-spacing:.02em}.announcement-item button,.announcement-item b{font-size:10px;padding:5px 12px}.header{top:88px}.mobile-menu-panel{top:156px;max-height:calc(100svh - 172px)}}
+@media(max-width:640px){.announcement{height:34px;padding:0}.announcement-item{flex-direction:row;gap:24px;padding:0 24px;font-size:8px;letter-spacing:.025em}.announcement-item button,.announcement-item b{font-size:8px;padding:5px 11px}.header{top:34px}.mobile-menu-panel{top:102px;max-height:calc(100svh - 118px)}}
 @media(prefers-reduced-motion:reduce){.announcement-track{animation:none}.announcement-item:not(:first-child){display:none}}
 
 .account-link svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6}.account-link.logged-in{color:#7de2b4!important}
