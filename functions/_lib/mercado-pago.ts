@@ -2,6 +2,7 @@ import type { Env } from "./types";
 import { apiError, json, normalizeEmail, readJson } from "./http";
 import { currentCustomer, hashPassword } from "./auth";
 import { calculateCorreiosQuotes } from "./correios";
+import { giftCardBalance, syncGiftPayment } from "./gift-cards";
 
 type CheckoutItem = { product_id?: number; variant_id?: number; quantity?: number; personalization?: { engraving_text?: string; image_upload_id?: string; image_name?: string } };
 type CheckoutBody = {
@@ -13,6 +14,7 @@ type CheckoutBody = {
   };
   items?: CheckoutItem[];
   coupon?: string;
+  gift_card_code?: string;
 };
 
 type ProductRow = {
@@ -166,6 +168,10 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
   }
   const subtotal = products.reduce((sum, item) => sum + item.unit_price_cents * item.stock, 0);
   const id = await customerId(env, customer);
+  if (body.gift_card_code) {
+    const signedIn = await currentCustomer(request, env);
+    if (!signedIn || signedIn.id !== id) return apiError("Entre na conta correspondente ao e-mail do pedido para usar o cartão.",401);
+  }
   const automaticFirstPurchase = !body.coupon?.trim() && await firstPurchaseEligible(env, id);
   const couponCode = body.coupon?.trim() || (automaticFirstPurchase ? FIRST_PURCHASE_COUPON : undefined);
   let discount: Awaited<ReturnType<typeof calculateDiscount>>;
@@ -198,20 +204,51 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
   const orderResult = await env.DB.prepare(`INSERT INTO orders(order_number,customer_id,status,subtotal_cents,discount_cents,shipping_cents,total_cents,shipping_method,shipping_address_json,coupon_id)
     VALUES(?,?,'pending_payment',?,?,?,?,?,?,?)`).bind(orderNumber, id, subtotal, discount.cents, shippingCents, total, shippingMethod, address, discount.couponId).run();
   const orderId = Number(orderResult.meta.last_row_id);
+  let giftCents = 0;
+  if (body.gift_card_code) {
+    const card = await giftCardBalance(env, body.gift_card_code.trim().toUpperCase());
+    if (!card || card.balance_cents < 1) {
+      await env.DB.prepare("UPDATE orders SET status='cancelled' WHERE id=?").bind(orderId).run();
+      return apiError("Cartão inválido, sem saldo ou ainda não liberado.");
+    }
+    giftCents = Math.min(total,card.balance_cents);
+    // A reserva e o débito são atômicos: o trigger impede uso simultâneo além do saldo.
+    try {
+      await env.DB.batch([
+        env.DB.prepare("INSERT INTO gift_card_uses(order_id,gift_card_id,amount_cents) VALUES(?,?,?)").bind(orderId,card.id,giftCents),
+        env.DB.prepare("UPDATE orders SET gift_card_cents=? WHERE id=?").bind(giftCents,orderId)
+      ]);
+    } catch {
+      await env.DB.prepare("UPDATE orders SET status='cancelled' WHERE id=?").bind(orderId).run();
+      return apiError("O saldo mudou. Consulte o cartão e tente novamente.",409);
+    }
+  }
+  const payable = total - giftCents;
   await env.DB.batch([
     ...products.map(item => env.DB.prepare(`INSERT INTO order_items(order_id,product_id,variant_id,product_name,sku,unit_price_cents,quantity,personalization_json,personalization_fee_cents)
       VALUES(?,?,?,?,?,?,?,?,?)`).bind(orderId, item.product_id, item.variant_id, item.name, item.sku, item.unit_price_cents, item.stock, item.personalization_json, item.personalization_fee_cents)),
     ...products.filter(item => item.image_upload_id).map(item => env.DB.prepare("UPDATE personalization_uploads SET order_id=? WHERE id=? AND order_id IS NULL").bind(orderId, item.image_upload_id)),
-    env.DB.prepare("INSERT INTO payments(order_id,provider,status,amount_cents) VALUES(?,'mercado_pago','pending',?)").bind(orderId, total),
+    env.DB.prepare("INSERT INTO payments(order_id,provider,status,amount_cents) VALUES(?,?,'pending',?)").bind(orderId, payable ? "mercado_pago" : "gift_card", payable),
   ]);
   const origin = new URL(request.url).origin;
+  if (!payable) {
+    await env.DB.batch([
+      env.DB.prepare("UPDATE orders SET status='paid' WHERE id=?").bind(orderId),
+      env.DB.prepare("UPDATE payments SET status='approved' WHERE order_id=?").bind(orderId),
+      env.DB.prepare("UPDATE gift_card_uses SET status='spent' WHERE order_id=?").bind(orderId),
+      ...products.map(item=>env.DB.prepare("UPDATE product_variants SET stock=MAX(0,stock-?),updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(item.stock,item.variant_id)),
+      env.DB.prepare("UPDATE loyalty_accounts SET purchase_count=purchase_count+1 WHERE customer_id=?").bind(id),
+      ...(discount.couponId?[env.DB.prepare("UPDATE coupons SET uses=uses+1 WHERE id=?").bind(discount.couponId)]:[])
+    ]);
+    return json({ok:true,order_number:orderNumber,checkout_url:origin+"/pagamento-retorno.html?status=success&pedido="+encodeURIComponent(orderNumber)},201);
+  }
   const preferenceBody = {
     items: [{
       id: orderNumber,
       title: discount.cents ? "Pedido Elegance 18K (" + discount.code + ")" : "Pedido Elegance 18K",
       quantity: 1,
       currency_id: "BRL",
-      unit_price: total / 100,
+      unit_price: payable / 100,
     }],
     payer: { name: customer.name!.trim(), email, phone: { number: digits(customer.phone || "") }, identification: { type: "CPF", number: digits(customer.cpf || "") } },
     external_reference: orderNumber,
@@ -236,9 +273,12 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
       .bind(preference.id, orderId).run();
     const checkoutUrl = env.MERCADO_PAGO_ACCESS_TOKEN.startsWith("TEST-") ? preference.sandbox_init_point : preference.init_point;
     if (!checkoutUrl) throw new Error("MERCADO_PAGO_WITHOUT_URL");
+    if(giftCents)await env.DB.prepare("UPDATE orders SET gift_checkout_url=? WHERE id=?").bind(checkoutUrl,orderId).run();
     return json({ ok: true, order_number: orderNumber, checkout_url: checkoutUrl }, 201);
   } catch (error) {
     await env.DB.batch([
+      // Só libera quando o provedor recusou a criação; timeout pode ter criado a preferência.
+      ...(/^MERCADO_PAGO_4\d\d$/.test(error instanceof Error?error.message:"")?[env.DB.prepare("UPDATE gift_card_uses SET status='released' WHERE order_id=? AND status='reserved'").bind(orderId)]:[]),
       env.DB.prepare("UPDATE orders SET status='cancelled',updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(orderId),
       env.DB.prepare("UPDATE payments SET status='error',raw_status=?,updated_at=CURRENT_TIMESTAMP WHERE order_id=?")
         .bind(error instanceof Error ? error.message : "unknown", orderId),
@@ -273,25 +313,32 @@ export async function mercadoPagoWebhook(request: Request, env: Env): Promise<Re
     return apiError("Assinatura inválida.", 401, "INVALID_SIGNATURE");
   }
   const payment = await mercadoPago<MercadoPagoPayment>(env, `/v1/payments/${dataId}`);
-  const order = await env.DB.prepare("SELECT id,status,total_cents,customer_id,coupon_id FROM orders WHERE order_number=?")
-    .bind(payment.external_reference || "").first<{ id: number; status: string; total_cents: number; customer_id: number; coupon_id: number | null }>();
-  if (!order || cents(payment.transaction_amount) !== order.total_cents) return apiError("Pagamento não corresponde ao pedido.", 409, "PAYMENT_MISMATCH");
+  if (await syncGiftPayment(env,payment)) return json({ok:true});
+  const order = await env.DB.prepare("SELECT id,status,total_cents,gift_card_cents,customer_id,coupon_id FROM orders WHERE order_number=?")
+    .bind(payment.external_reference || "").first<{ id: number; status: string; total_cents: number; gift_card_cents:number; customer_id: number; coupon_id: number | null }>();
+  if (!order || cents(payment.transaction_amount) !== order.total_cents-order.gift_card_cents) return apiError("Pagamento não corresponde ao pedido.", 409, "PAYMENT_MISMATCH");
   const mapped = payment.status === "approved" ? "paid" : ["refunded", "charged_back"].includes(payment.status) ? "refunded" : ["cancelled", "rejected"].includes(payment.status) ? "cancelled" : "pending_payment";
   const paymentStatus = payment.status === "approved" ? "approved" : payment.status;
   await env.DB.prepare("UPDATE payments SET provider_payment_id=?,status=?,raw_status=?,updated_at=CURRENT_TIMESTAMP WHERE order_id=?")
     .bind(String(payment.id), paymentStatus, payment.status, order.id).run();
-  if (mapped === "paid" && order.status !== "paid") {
-    const changed = await env.DB.prepare("UPDATE orders SET status='paid',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status!='paid'").bind(order.id).run();
+  if (mapped === "paid" && !["paid","preparing","shipped","delivered","refunded"].includes(order.status)) {
+    const changed = await env.DB.prepare("UPDATE orders SET status='paid',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('pending_payment','cancelled')").bind(order.id).run();
     if (changed.meta.changes) {
       const items = await env.DB.prepare("SELECT variant_id,quantity FROM order_items WHERE order_id=? AND variant_id IS NOT NULL").bind(order.id).all<{ variant_id: number; quantity: number }>();
       await env.DB.batch([
+        env.DB.prepare("UPDATE gift_card_uses SET status='spent' WHERE order_id=? AND status='reserved'").bind(order.id),
         ...items.results.map(item => env.DB.prepare("UPDATE product_variants SET stock=MAX(0,stock-?),updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(item.quantity, item.variant_id)),
         env.DB.prepare("UPDATE loyalty_accounts SET purchase_count=purchase_count+1,updated_at=CURRENT_TIMESTAMP WHERE customer_id=?").bind(order.customer_id),
         ...(order.coupon_id ? [env.DB.prepare("UPDATE coupons SET uses=uses+1 WHERE id=?").bind(order.coupon_id)] : []),
       ]);
     }
+  } else if (mapped === "refunded") {
+    await env.DB.batch([
+      env.DB.prepare("UPDATE orders SET status='refunded',updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(order.id),
+      env.DB.prepare("UPDATE gift_card_uses SET status='released' WHERE order_id=? AND status!='released'").bind(order.id)
+    ]);
   } else if (mapped !== "paid") {
-    await env.DB.prepare("UPDATE orders SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status NOT IN ('shipped','delivered')").bind(mapped, order.id).run();
+    await env.DB.prepare("UPDATE orders SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('pending_payment','cancelled')").bind(mapped, order.id).run();
   }
   console.log(JSON.stringify({ event: "mercado_pago_webhook", payment_id: payment.id, order_id: order.id, status: payment.status }));
   return json({ ok: true });

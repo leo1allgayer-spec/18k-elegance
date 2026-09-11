@@ -72,6 +72,7 @@
         customer:{name:data.name,email:data.email,cpf:data.cpf,phone:data.phone},
         shipping:{method:data.shipping,service_code:data.shipping_service_code,postal_code:data.postal_code,street:data.street,number:data.number,complement:data.complement,neighborhood:data.neighborhood,city:cityState[0]||'',state:cityState[1]||''},
         items,
+        gift_card_code:String(data.gift_card_code||'').trim()||undefined,
         coupon:JSON.parse(localStorage.getItem('elegance-coupon')||'null')?.code||undefined,
       })});
       const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error?.message||'Não foi possível iniciar o pagamento.');
