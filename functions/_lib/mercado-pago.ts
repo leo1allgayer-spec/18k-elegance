@@ -14,6 +14,7 @@ type CheckoutBody = {
   };
   items?: CheckoutItem[];
   coupon?: string;
+  payment_method?: "pix" | "other";
   gift_card_code?: string;
 };
 
@@ -198,6 +199,26 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
       return apiError("Não foi possível confirmar o frete dos Correios.", 502, "SHIPPING_PROVIDER_ERROR");
     }
   }
+  const pixSelected = body.payment_method === "pix";
+  let pixBase = subtotal - discount.cents;
+  if (pixSelected && body.gift_card_code) {
+    const gift = await giftCardBalance(env, body.gift_card_code.trim().toUpperCase());
+    pixBase = Math.max(0,pixBase-(gift?.balance_cents||0));
+  }
+  const pixDiscount = pixSelected ? Math.round(pixBase * 5 / 100) : 0;
+  discount.cents += pixDiscount;
+  let paymentMethods: {installments:number;excluded_payment_methods?:{id:string}[];excluded_payment_types?:{id:string}[];default_payment_method_id?:string} = {installments:6};
+  if (pixSelected) {
+    try {
+      const methods = await mercadoPago<MercadoPagoMethod[]>(env,"/v1/payment_methods");
+      if (!methods.some(method=>method.id==="pix"&&method.status==="active")) return apiError("Pix indisponível no momento. Selecione outra forma de pagamento.",503);
+      paymentMethods = {
+        installments:1,default_payment_method_id:"pix",
+        excluded_payment_methods:methods.filter(method=>method.id&&method.id!=="pix").map(method=>({id:method.id!})),
+        excluded_payment_types:[...new Set([...methods.map(method=>method.payment_type_id).filter((type):type is string=>Boolean(type)&&type!=="bank_transfer"),"account_money"])].map(id=>({id}))
+      };
+    } catch { return apiError("Não foi possível confirmar a disponibilidade do Pix. Tente novamente.",503); }
+  }
   const total = subtotal - discount.cents + shippingCents;
   if (total < 1) return apiError("O total do pedido é inválido.");
   const orderNumber = `ELG-${Date.now().toString(36).toUpperCase()}-${crypto.randomUUID().slice(0, 5).toUpperCase()}`;
@@ -262,7 +283,7 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
     auto_return: "approved",
     notification_url: `${origin}/api/payments/mercado-pago/webhook`,
     statement_descriptor: "ELEGANCE18K",
-    payment_methods: { installments: 6 },
+    payment_methods: paymentMethods,
   };
   try {
     const preference = await mercadoPago<MercadoPagoPreference>(env, "/checkout/preferences", {
