@@ -120,10 +120,10 @@ async function firstPurchaseEligible(env: Env, customerId: number): Promise<bool
   return !purchase;
 }
 
-async function calculateDiscount(env: Env, code: string | undefined, subtotal: number, customerId?: number) {
+async function calculateDiscount(env: Env, code: string | undefined, subtotal: number, customerId?: number, previewOnly = false) {
   if (!code?.trim()) return { cents: 0, couponId: null as number | null, code: null as string | null };
   const normalizedCode = code.trim().toUpperCase();
-  if (normalizedCode === FIRST_PURCHASE_COUPON && (!customerId || !(await firstPurchaseEligible(env, customerId)))) throw new Error("FIRST_PURCHASE_USED");
+  if (normalizedCode === FIRST_PURCHASE_COUPON && (customerId ? !(await firstPurchaseEligible(env, customerId)) : !previewOnly)) throw new Error("FIRST_PURCHASE_USED");
   const coupon = await env.DB.prepare(`SELECT id,type,value,minimum_cents,max_uses,uses FROM coupons
     WHERE code=? COLLATE NOCASE AND active=1 AND (starts_at IS NULL OR starts_at<=CURRENT_TIMESTAMP)
     AND (expires_at IS NULL OR expires_at>=CURRENT_TIMESTAMP)`).bind(normalizedCode).first<{ id: number; type: "percent" | "fixed"; value: number; minimum_cents: number; max_uses: number | null; uses: number }>();
@@ -140,11 +140,12 @@ export async function validateCartCoupon(request: Request, env: Env): Promise<Re
     const products = await resolveItems(env, body.items || []);
     const subtotal = products.reduce((sum, item) => sum + item.unit_price_cents * item.stock, 0);
     const customer = await currentCustomer(request, env);
-    const discount = await calculateDiscount(env, code, subtotal, customer?.id);
-    return json({ ok: true, coupon: { code, discount_cents: discount.cents }, subtotal_cents: subtotal, total_cents: subtotal - discount.cents });
+    const requiresEligibilityCheck = code === FIRST_PURCHASE_COUPON && !customer;
+    const discount = await calculateDiscount(env, code, subtotal, customer?.id, requiresEligibilityCheck);
+    return json({ ok: true, coupon: { code, discount_cents: discount.cents, requires_eligibility_check: requiresEligibilityCheck }, subtotal_cents: subtotal, total_cents: subtotal - discount.cents });
   } catch (error) {
     const code = error instanceof Error ? error.message : "INVALID_COUPON";
-    if (code === "FIRST_PURCHASE_USED") return apiError("Este cupom é exclusivo para a primeira compra da cliente conectada.", 400, code);
+    if (code === "FIRST_PURCHASE_USED") return apiError("Esta conta já possui uma compra. O cupom PRIMEIRAELEGANCE é exclusivo para a primeira compra.", 400, code);
     if (code === "INVALID_COUPON") return apiError("Cupom inválido, expirado ou indisponível para este pedido.", 400, code);
     return apiError("Não foi possível validar o cupom com esta sacola.", 400, code);
   }

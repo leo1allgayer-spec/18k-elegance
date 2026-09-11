@@ -257,7 +257,9 @@ document.querySelector("#apply-coupon")?.addEventListener("click", async () => {
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error?.message || "Cupom inválido.");
     localStorage.setItem("elegance-coupon", JSON.stringify({ code:result.coupon.code, discount_cents:result.coupon.discount_cents, subtotal_cents:result.subtotal_cents }));
-    feedback.textContent = `Cupom aplicado: você economizou ${money(result.coupon.discount_cents / 100)}.`;
+    feedback.textContent = result.coupon.requires_eligibility_check
+      ? `Desconto previsto: ${money(result.coupon.discount_cents / 100)}. A primeira compra será confirmada com seus dados no pagamento.`
+      : `Cupom aplicado: você economizou ${money(result.coupon.discount_cents / 100)}.`;
     renderCart();
   } catch (error) { localStorage.removeItem("elegance-coupon"); feedback.textContent = error.message; renderCart(); }
   finally { button.disabled = false; button.textContent = "Aplicar"; }
