@@ -38,7 +38,7 @@
     const cityInput=form.elements.city_state,option=form.querySelector('.motoboy-checkout-option'),radio=option?.querySelector('input'),price=option?.querySelector('strong'),help=option?.querySelector('small'),link=form.querySelector('.motoboy-whatsapp');
     if(!cityInput||!option||!radio||!price||!link)return;
     const normalize=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
-    const update=()=>{const city=normalize(cityInput.value.split('-')[0]),rates={canoas:2000,esteio:2500,sapucaia:3000},cents=rates[city];
+    const update=()=>{const city=normalize(cityInput.value.split('-')[0]),rates={canoas:2000,esteio:2500,sapucaia:3000,'sapucaia do sul':3000},cents=rates[city];
       if(cents){radio.disabled=false;price.textContent=(cents/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});help.textContent=`Valor fixo para ${cityInput.value.split('-')[0].trim()}`;link.hidden=true}
       else{radio.disabled=true;price.textContent=city?'Sob consulta':'Informe a cidade';help.textContent='Canoas R$ 20 · Esteio R$ 25 · Sapucaia R$ 30';if(radio.checked)form.querySelector('input[name="shipping"][value="pickup"]')?.click();link.hidden=!city;link.href=`https://wa.me/555194927676?text=${encodeURIComponent(`Olá! Gostaria de cotar a entrega por motoboy para ${cityInput.value.trim()}.`)}`}
     };cityInput.addEventListener('input',update);cityInput.addEventListener('change',update);update();

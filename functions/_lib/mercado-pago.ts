@@ -178,7 +178,7 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
   let shippingCents = 0;
   if (shippingMethod === "motoboy") {
     const city = (body.shipping?.city || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-    const rates: Record<string, number> = { canoas: 2000, esteio: 2500, sapucaia: 3000 };
+    const rates: Record<string, number> = { canoas: 2000, esteio: 2500, sapucaia: 3000, "sapucaia do sul": 3000 };
     shippingCents = rates[city] || 0;
     if (!shippingCents) return apiError("Para esta cidade, solicite a cotação do motoboy pelo WhatsApp ou selecione Correios.", 400, "MOTOBOY_QUOTE_REQUIRED");
   } else if (shippingMethod === "correios") {
