@@ -44,7 +44,7 @@ function secureToken(): string {
 }
 
 function publicUrl(request: Request, page: string, token: string): string {
-  const url = new URL(page, request.url);
+  const url = new URL(`/${page.replace(/^\/+/, "")}`, request.url);
   url.searchParams.set(page.startsWith("carrinho") ? "recuperar" : "redefinir", token);
   return url.toString();
 }
@@ -477,6 +477,12 @@ async function recoverCart(request: Request, env: Env): Promise<Response> {
 async function route(request: Request, env: Env): Promise<Response> {
   const method = request.method.toUpperCase();
   const parts = pathParts(request);
+  if (method === "GET" && (parts[0] === "carrinho.html" || parts[0] === "conta.html")) {
+    const source = new URL(request.url);
+    const target = new URL(`/${parts[0]}`, source.origin);
+    target.search = source.search;
+    return Response.redirect(target.toString(), 302);
+  }
   const correiosMissing = [
     ["CORREIOS_USER", env.CORREIOS_USER],
     ["CORREIOS_ACCESS_CODE", env.CORREIOS_ACCESS_CODE],
