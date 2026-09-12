@@ -1,1 +1,74 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,follow"><title>Minha conta | Elegance 18K</title><link rel="icon" type="image/png" href="assets/favicon-e-black.png?v=4"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="styles.css?v=20260910-02"><link rel="stylesheet" href="store.css?v=20260908-02"></head><body class="account-page"><header class="account-header"><a href="index.html">← Voltar para a loja</a><a href="index.html" class="logo"><img src="assets/logo-oficial.png" alt="Elegance 18K"></a><a href="carrinho.html">Minha sacola</a></header><main class="account-shell"><section id="account-auth"><p class="eyebrow">UNIVERSO ELEGANCE</p><h1>Sua conta</h1><p class="account-intro">Entre para acompanhar pedidos, salvar seu endereço e receber seus benefícios.</p><div class="account-tabs"><button type="button" data-auth-tab="login" class="active">Entrar</button><button type="button" data-auth-tab="register">Criar conta</button></div><form id="account-login" class="account-form"><label>E-mail<input name="email" type="email" autocomplete="email" required></label><label>Senha<input name="password" type="password" autocomplete="current-password" minlength="8" required></label><button class="button" type="submit">Entrar</button><a class="account-help" href="https://wa.me/555194927676?text=Preciso%20de%20ajuda%20para%20recuperar%20minha%20senha%20da%20Elegance%2018K" target="_blank" rel="noopener">Esqueci minha senha</a></form><form id="account-register" class="account-form" hidden><label>Nome completo<input name="name" autocomplete="name" required></label><label>E-mail<input name="email" type="email" autocomplete="email" required></label><label>Celular<input name="phone" autocomplete="tel" required></label><label>Data de nascimento<input name="birth_date" type="date"></label><label>Crie uma senha<input name="password" type="password" autocomplete="new-password" minlength="8" required><small>Mínimo de 8 caracteres</small></label><button class="button" type="submit">Criar minha conta</button></form><p class="account-message" aria-live="polite"></p></section><section id="account-dashboard" hidden><header class="account-welcome"><div><p class="eyebrow">MINHA ELEGANCE</p><h1>Olá, <span id="account-first-name"></span></h1></div><button type="button" id="account-logout">Sair</button></header><div id="first-purchase-benefit" class="account-benefit" hidden><span>BENEFÍCIO DISPONÍVEL</span><strong>10% OFF na sua primeira compra</strong><p>O cupom PRIMEIRAELEGANCE será aplicado automaticamente no checkout.</p></div><div class="account-grid"><form id="profile-form" class="account-card"><h2>Meus dados</h2><label>Nome completo<input name="name" required></label><label>E-mail<input name="email" type="email" disabled></label><label>Celular<input name="phone"></label><label>Data de nascimento<input name="birth_date" type="date"></label><button class="outline-button" type="submit">Salvar dados</button></form><form id="address-form" class="account-card"><h2>Endereço principal</h2><div class="address-grid"><label>CEP<input name="postal_code" autocomplete="postal-code" required></label><label>Rua<input name="street" required></label><label>Número<input name="number" required></label><label>Complemento<input name="complement"></label><label>Bairro<input name="neighborhood" required></label><label>Cidade<input name="city" required></label><label>Estado<input name="state" maxlength="2" required></label></div><button class="outline-button" type="submit">Salvar endereço</button></form><article class="account-card loyalty-summary"><h2>Clube fidelidade</h2><strong id="loyalty-count">0 compras</strong><p>A cada compra aprovada, seu progresso é atualizado automaticamente.</p><a href="fidelidade.html">Ver regras do clube →</a></article><article class="account-card orders-card"><h2>Meus pedidos</h2><p><a href="cartao-presente.html#my-gifts">Meus cartões-presente →</a></p><div id="account-orders"></div></article></div><p class="dashboard-message account-message" aria-live="polite"></p></section></main><script src="conta.js?v=20260908-01"></script></body></html>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,follow">
+  <title>Minha conta | Elegance 18K</title>
+  <link rel="icon" type="image/png" href="assets/favicon-e-black.png?v=4">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=20260910-02">
+  <link rel="stylesheet" href="store.css?v=20260908-02">
+  <link rel="stylesheet" href="recovery.css?v=20260912-01">
+</head>
+<body class="account-page">
+  <header class="account-header">
+    <a href="index.html">← Voltar para a loja</a>
+    <a href="index.html" class="logo"><img src="assets/logo-oficial.png" alt="Elegance 18K"></a>
+    <a href="carrinho.html">Minha sacola</a>
+  </header>
+  <main class="account-shell">
+    <section id="account-auth">
+      <p class="eyebrow">UNIVERSO ELEGANCE</p>
+      <h1>Sua conta</h1>
+      <p class="account-intro">Entre para acompanhar pedidos, salvar seu endereço e receber seus benefícios.</p>
+      <div class="account-tabs">
+        <button type="button" data-auth-tab="login" class="active">Entrar</button>
+        <button type="button" data-auth-tab="register">Criar conta</button>
+      </div>
+      <form id="account-login" class="account-form">
+        <label>E-mail<input name="email" type="email" autocomplete="email" required></label>
+        <label>Senha<input name="password" type="password" autocomplete="current-password" minlength="8" required></label>
+        <button class="button" type="submit">Entrar</button>
+        <button class="account-help" id="show-password-recovery" type="button">Esqueci minha senha</button>
+      </form>
+      <form id="account-forgot" class="account-form" hidden>
+        <p class="account-form-intro">Informe o celular cadastrado. Você receberá no WhatsApp um link seguro, válido por 30 minutos.</p>
+        <label>Celular com DDD<input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(51) 99999-9999" required></label>
+        <button class="button" type="submit">Enviar link pelo WhatsApp</button>
+        <button class="account-help" data-back-to-login type="button">Voltar para entrar</button>
+      </form>
+      <form id="account-reset" class="account-form" hidden>
+        <p class="account-form-intro">Crie uma nova senha para sua conta.</p>
+        <label>Nova senha<input name="password" type="password" autocomplete="new-password" minlength="8" required><small>Mínimo de 8 caracteres</small></label>
+        <label>Repita a nova senha<input name="password_confirmation" type="password" autocomplete="new-password" minlength="8" required></label>
+        <button class="button" type="submit">Salvar nova senha</button>
+        <button class="account-help" data-back-to-login type="button">Voltar para entrar</button>
+      </form>
+      <form id="account-register" class="account-form" hidden>
+        <label>Nome completo<input name="name" autocomplete="name" required></label>
+        <label>E-mail<input name="email" type="email" autocomplete="email" required></label>
+        <label>Celular<input name="phone" autocomplete="tel" required></label>
+        <label>Data de nascimento<input name="birth_date" type="date"></label>
+        <label>Crie uma senha<input name="password" type="password" autocomplete="new-password" minlength="8" required><small>Mínimo de 8 caracteres</small></label>
+        <button class="button" type="submit">Criar minha conta</button>
+      </form>
+      <p class="account-message" aria-live="polite"></p>
+    </section>
+    <section id="account-dashboard" hidden>
+      <header class="account-welcome"><div><p class="eyebrow">MINHA ELEGANCE</p><h1>Olá, <span id="account-first-name"></span></h1></div><button type="button" id="account-logout">Sair</button></header>
+      <div id="first-purchase-benefit" class="account-benefit" hidden><span>BENEFÍCIO DISPONÍVEL</span><strong>10% OFF na sua primeira compra</strong><p>O cupom PRIMEIRAELEGANCE será aplicado automaticamente no checkout.</p></div>
+      <div class="account-grid">
+        <form id="profile-form" class="account-card"><h2>Meus dados</h2><label>Nome completo<input name="name" required></label><label>E-mail<input name="email" type="email" disabled></label><label>Celular<input name="phone"></label><label>Data de nascimento<input name="birth_date" type="date"></label><button class="outline-button" type="submit">Salvar dados</button></form>
+        <form id="address-form" class="account-card"><h2>Endereço principal</h2><div class="address-grid"><label>CEP<input name="postal_code" autocomplete="postal-code" required></label><label>Rua<input name="street" required></label><label>Número<input name="number" required></label><label>Complemento<input name="complement"></label><label>Bairro<input name="neighborhood" required></label><label>Cidade<input name="city" required></label><label>Estado<input name="state" maxlength="2" required></label></div><button class="outline-button" type="submit">Salvar endereço</button></form>
+        <article class="account-card loyalty-summary"><h2>Clube fidelidade</h2><strong id="loyalty-count">0 compras</strong><p>A cada compra aprovada, seu progresso é atualizado automaticamente.</p><a href="fidelidade.html">Ver regras do clube →</a></article>
+        <article class="account-card orders-card"><h2>Meus pedidos</h2><p><a href="cartao-presente.html#my-gifts">Meus cartões-presente →</a></p><div id="account-orders"></div></article>
+      </div>
+      <p class="dashboard-message account-message" aria-live="polite"></p>
+    </section>
+  </main>
+  <script src="conta.js?v=20260912-whatsapp"></script>
+</body>
+</html>

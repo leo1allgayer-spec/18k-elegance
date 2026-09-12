@@ -208,7 +208,7 @@ function renderCart() {
   if (!container) return;
   const cart = getCart();
   const safe = value => String(value || "").replace(/[&<>\"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-  container.innerHTML = cart.map((item, index) => `<article class="cart-item"><img src="${item.image}" alt="${item.name}"><div><h3>${item.name}</h3><p>Quantidade: ${item.qty}</p>${item.personalization?.engraving_text?`<p class="cart-personalization"><b>Gravação:</b> ${safe(item.personalization.engraving_text)}</p>`:""}${item.personalization?.image_name?`<p class="cart-personalization"><b>Foto:</b> ${safe(item.personalization.image_name)}</p>`:""}<button data-remove="${index}">Remover</button></div><strong>${money(item.price * item.qty)}</strong></article>`).join("");
+  container.innerHTML = cart.map((item, index) => `<article class="cart-item"><img src="${safe(item.image)}" alt="${safe(item.name)}"><div><h3>${safe(item.name)}</h3><p>Quantidade: ${Number(item.qty) || 1}</p>${item.personalization?.engraving_text?`<p class="cart-personalization"><b>Gravação:</b> ${safe(item.personalization.engraving_text)}</p>`:""}${item.personalization?.image_name?`<p class="cart-personalization"><b>Foto:</b> ${safe(item.personalization.image_name)}</p>`:""}<button data-remove="${index}">Remover</button></div><strong>${money((Number(item.price) || 0) * (Number(item.qty) || 1))}</strong></article>`).join("");
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const subtotalCents = Math.round(subtotal * 100);
   const savedCoupon = JSON.parse(localStorage.getItem("elegance-coupon") || "null");
@@ -226,6 +226,54 @@ function renderCart() {
   }));
 }
 renderCart();
+
+async function recoverCartFromLink() {
+  const token = new URLSearchParams(location.search).get("recuperar");
+  if (!token || !document.querySelector("#cart-items")) return;
+  const feedback = document.querySelector(".cart-recovery-message");
+  try {
+    if (feedback) feedback.textContent = "Recuperando seu carrinho…";
+    const response = await fetch("/api/cart-recovery?token=" + encodeURIComponent(token));
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error?.message || "Não foi possível recuperar o carrinho.");
+    saveCart(result.cart);
+    localStorage.removeItem("elegance-coupon");
+    renderCart();
+    history.replaceState({}, "", location.pathname);
+    if (feedback) feedback.textContent = "Carrinho recuperado com sucesso.";
+  } catch (error) {
+    if (feedback) { feedback.textContent = error.message; feedback.classList.add("error"); }
+  }
+}
+recoverCartFromLink();
+
+document.querySelector("#cart-recovery-form")?.addEventListener("submit", async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector("button");
+  const feedback = form.querySelector(".cart-recovery-message");
+  const cart = getCart();
+  feedback.classList.remove("error");
+  if (!cart.length) { feedback.textContent = "Adicione uma joia antes de enviar o carrinho."; feedback.classList.add("error"); return; }
+  button.disabled = true;
+  button.textContent = "Enviando…";
+  try {
+    const response = await fetch("/api/cart-recovery", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: new FormData(form).get("phone"), cart }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error?.message || "Não foi possível enviar o carrinho.");
+    feedback.textContent = result.message;
+  } catch (error) {
+    feedback.textContent = error.message;
+    feedback.classList.add("error");
+  } finally {
+    button.disabled = false;
+    button.textContent = "Enviar meu carrinho";
+  }
+});
 
 async function applyAutomaticFirstPurchaseCoupon(){
   const feedback=document.querySelector(".coupon-message"),cart=getCart();

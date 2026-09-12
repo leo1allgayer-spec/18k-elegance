@@ -1,15 +1,24 @@
 import type { Env } from "../_lib/types";
 import { apiError, json, normalizeEmail, readJson } from "../_lib/http";
-import { clearSessionCookie, createSession, currentCustomer, deleteCurrentSession, hashPassword, sessionCookie, verifyPassword } from "../_lib/auth";
+import { clearSessionCookie, createSession, currentCustomer, deleteCurrentSession, hashPassword, sessionCookie, sha256, verifyPassword } from "../_lib/auth";
 import { createMercadoPagoCheckout, mercadoPagoDiagnostic, mercadoPagoWebhook, publicPaymentStatus, validateCartCoupon } from "../_lib/mercado-pago";
 import { correiosConfigured, publicCorreiosQuote } from "../_lib/correios";
 import { blingCallback, blingConnect, blingStatus, disconnectBling } from "../_lib/bling";
 import { adminPersonalizationImage, publicProductImage, uploadPersonalization, uploadProductImage } from "../_lib/personalization";
+import { normalizeBrazilPhone, sendWhatsAppTemplate, whatsappConfigured } from "../_lib/whatsapp";
 
 type RegisterBody = { name?: string; email?: string; phone?: string; birth_date?: string; password?: string };
 type AccountBody = { name?: string; phone?: string; birth_date?: string };
 type AddressBody = { postal_code?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string };
 type LoginBody = { email?: string; password?: string };
+type ForgotPasswordBody = { phone?: string };
+type ResetPasswordBody = { token?: string; password?: string };
+type RecoveryCartItem = {
+  name?: string; price?: number; image?: string; qty?: number;
+  product_id?: number | null; variant_id?: number | null;
+  personalization?: { engraving_text?: string; image_upload_id?: string; image_name?: string } | null;
+};
+type CartRecoveryBody = { phone?: string; cart?: RecoveryCartItem[] };
 type ProductBody = {
   name?: string; category_id?: number | null; sku?: string; description?: string;
   price_cents?: number; pix_price_cents?: number | null; stock?: number;
@@ -25,6 +34,44 @@ type CouponBody = { code?: string; type?: "percent" | "fixed"; value?: number; m
 const slugify = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 const integer = (value: unknown, fallback = 0) => Number.isFinite(Number(value)) ? Math.round(Number(value)) : fallback;
 const flag = (value: unknown, fallback = true) => value === undefined ? (fallback ? 1 : 0) : (value ? 1 : 0);
+const sqlDate = (value: Date) => value.toISOString().slice(0, 19).replace("T", " ");
+
+function secureToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+function publicUrl(request: Request, page: string, token: string): string {
+  const url = new URL(page, request.url);
+  url.searchParams.set(page.startsWith("carrinho") ? "recuperar" : "redefinir", token);
+  return url.toString();
+}
+
+function sanitizeCart(items: RecoveryCartItem[]): RecoveryCartItem[] | null {
+  if (!Array.isArray(items) || items.length < 1 || items.length > 50) return null;
+  const sanitized = items.map(item => {
+    const qty = Math.max(1, Math.min(99, integer(item.qty, 1)));
+    const price = Number(item.price);
+    const name = String(item.name || "").trim().slice(0, 160);
+    const rawImage = String(item.image || "").trim().slice(0, 500);
+    const image = /^(https:\/\/|\/|assets\/)[^"'<>]+$/i.test(rawImage) ? rawImage : "";
+    if (!name || !Number.isFinite(price) || price < 0 || price > 1_000_000 || !image) return null;
+    const personalization = item.personalization ? {
+      engraving_text: String(item.personalization.engraving_text || "").slice(0, 80) || undefined,
+      image_upload_id: String(item.personalization.image_upload_id || "").slice(0, 120) || undefined,
+      image_name: String(item.personalization.image_name || "").slice(0, 160) || undefined,
+    } : null;
+    return {
+      name, price, image, qty,
+      product_id: item.product_id ? integer(item.product_id) : null,
+      variant_id: item.variant_id ? integer(item.variant_id) : null,
+      personalization,
+    };
+  });
+  return sanitized.some(item => item === null) ? null : sanitized as RecoveryCartItem[];
+}
 
 async function requireAdmin(request: Request, env: Env) {
   const customer = await currentCustomer(request, env);
@@ -334,6 +381,99 @@ async function login(request: Request, env: Env): Promise<Response> {
   return json({ ok: true, customer }, 200, { "Set-Cookie": sessionCookie(session.token, session.expiresAt) });
 }
 
+async function forgotPassword(request: Request, env: Env): Promise<Response> {
+  if (!whatsappConfigured(env) || !env.WHATSAPP_PASSWORD_TEMPLATE) return apiError("A recuperação por WhatsApp ainda não está configurada.", 503, "WHATSAPP_NOT_CONFIGURED");
+  const body = await readJson<ForgotPasswordBody>(request);
+  const phone = normalizeBrazilPhone(body.phone || "");
+  if (!phone) return apiError("Informe um celular válido com DDD.");
+  const localPhone = phone.slice(2);
+  const customer = await env.DB.prepare(`SELECT id, name FROM customers
+    WHERE active=1 AND account_claimed=1 AND
+    REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone,'(',''),')',''),'-',''),' ',''),'+','') IN (?,?)
+    LIMIT 1`).bind(phone, localPhone).first<{ id: number; name: string }>();
+  const genericMessage = "Se esse celular estiver cadastrado, enviaremos as instruções pelo WhatsApp.";
+  if (!customer) return json({ ok: true, message: genericMessage });
+  const recent = await env.DB.prepare(`SELECT COUNT(*) AS total FROM password_reset_tokens
+    WHERE customer_id=? AND created_at >= datetime('now','-15 minutes')`).bind(customer.id).first<{ total: number }>();
+  if ((recent?.total || 0) >= 3) return apiError("Aguarde alguns minutos antes de pedir outro link.", 429, "RATE_LIMITED");
+  const token = secureToken();
+  const tokenHash = await sha256(token);
+  const expiresAt = sqlDate(new Date(Date.now() + 30 * 60 * 1000));
+  await env.DB.batch([
+    env.DB.prepare("UPDATE password_reset_tokens SET used_at=CURRENT_TIMESTAMP WHERE customer_id=? AND used_at IS NULL").bind(customer.id),
+    env.DB.prepare("INSERT INTO password_reset_tokens(customer_id,token_hash,expires_at) VALUES(?,?,?)").bind(customer.id, tokenHash, expiresAt),
+  ]);
+  try {
+    await sendWhatsAppTemplate(env, phone, env.WHATSAPP_PASSWORD_TEMPLATE!, [
+      customer.name.trim().split(/\s+/)[0],
+      publicUrl(request, "conta.html", token),
+    ]);
+  } catch {
+    await env.DB.prepare("DELETE FROM password_reset_tokens WHERE token_hash=?").bind(tokenHash).run();
+    return apiError("Não foi possível enviar a mensagem agora. Tente novamente em instantes.", 502, "WHATSAPP_SEND_FAILED");
+  }
+  return json({ ok: true, message: genericMessage });
+}
+
+async function resetPassword(request: Request, env: Env): Promise<Response> {
+  const body = await readJson<ResetPasswordBody>(request);
+  const token = String(body.token || "");
+  const password = String(body.password || "");
+  if (token.length < 30) return apiError("Este link de recuperação é inválido.", 400, "INVALID_TOKEN");
+  if (password.length < 8) return apiError("A senha deve ter pelo menos 8 caracteres.");
+  const tokenHash = await sha256(token);
+  const record = await env.DB.prepare(`SELECT id, customer_id FROM password_reset_tokens
+    WHERE token_hash=? AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP`).bind(tokenHash).first<{ id: number; customer_id: number }>();
+  if (!record) return apiError("Este link expirou ou já foi utilizado.", 400, "INVALID_TOKEN");
+  const credentials = await hashPassword(password);
+  const claimed = await env.DB.prepare(`UPDATE password_reset_tokens SET used_at=CURRENT_TIMESTAMP
+    WHERE id=? AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP`).bind(record.id).run();
+  if (!claimed.meta.changes) return apiError("Este link expirou ou já foi utilizado.", 400, "INVALID_TOKEN");
+  await env.DB.batch([
+    env.DB.prepare("UPDATE customers SET password_hash=?,password_salt=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+      .bind(credentials.hash, credentials.salt, record.customer_id),
+    env.DB.prepare("DELETE FROM sessions WHERE customer_id=?").bind(record.customer_id),
+  ]);
+  return json({ ok: true, message: "Senha alterada com sucesso. Você já pode entrar." });
+}
+
+async function createCartRecovery(request: Request, env: Env): Promise<Response> {
+  if (!whatsappConfigured(env) || !env.WHATSAPP_CART_TEMPLATE) return apiError("O envio do carrinho por WhatsApp ainda não está configurado.", 503, "WHATSAPP_NOT_CONFIGURED");
+  const body = await readJson<CartRecoveryBody>(request);
+  const phone = normalizeBrazilPhone(body.phone || "");
+  const cart = sanitizeCart(body.cart || []);
+  if (!phone) return apiError("Informe um celular válido com DDD.");
+  if (!cart) return apiError("O carrinho está vazio ou contém itens inválidos.");
+  const cartJson = JSON.stringify(cart);
+  if (cartJson.length > 50_000) return apiError("O carrinho é grande demais para ser recuperado.");
+  const recent = await env.DB.prepare(`SELECT COUNT(*) AS total FROM cart_recovery_links
+    WHERE phone=? AND created_at >= datetime('now','-15 minutes')`).bind(phone).first<{ total: number }>();
+  if ((recent?.total || 0) >= 3) return apiError("Aguarde alguns minutos antes de enviar novamente.", 429, "RATE_LIMITED");
+  const token = secureToken();
+  const tokenHash = await sha256(token);
+  const expiresAt = sqlDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+  await env.DB.prepare("INSERT INTO cart_recovery_links(phone,token_hash,cart_json,expires_at) VALUES(?,?,?,?)")
+    .bind(phone, tokenHash, cartJson, expiresAt).run();
+  try {
+    await sendWhatsAppTemplate(env, phone, env.WHATSAPP_CART_TEMPLATE!, [publicUrl(request, "carrinho.html", token)]);
+  } catch {
+    await env.DB.prepare("DELETE FROM cart_recovery_links WHERE token_hash=?").bind(tokenHash).run();
+    return apiError("Não foi possível enviar o carrinho agora. Tente novamente em instantes.", 502, "WHATSAPP_SEND_FAILED");
+  }
+  return json({ ok: true, message: "Carrinho enviado para o seu WhatsApp." }, 201);
+}
+
+async function recoverCart(request: Request, env: Env): Promise<Response> {
+  const token = new URL(request.url).searchParams.get("token") || "";
+  if (token.length < 30) return apiError("Link de carrinho inválido.", 400, "INVALID_TOKEN");
+  const tokenHash = await sha256(token);
+  const record = await env.DB.prepare(`SELECT id, cart_json FROM cart_recovery_links
+    WHERE token_hash=? AND expires_at > CURRENT_TIMESTAMP`).bind(tokenHash).first<{ id: number; cart_json: string }>();
+  if (!record) return apiError("Este link de carrinho expirou.", 404, "INVALID_TOKEN");
+  await env.DB.prepare("UPDATE cart_recovery_links SET opened_at=COALESCE(opened_at,CURRENT_TIMESTAMP) WHERE id=?").bind(record.id).run();
+  return json({ ok: true, cart: JSON.parse(record.cart_json) });
+}
+
 async function route(request: Request, env: Env): Promise<Response> {
   const method = request.method.toUpperCase();
   const parts = pathParts(request);
@@ -360,6 +500,9 @@ async function route(request: Request, env: Env): Promise<Response> {
       correios: correiosConfigured(env),
       correios_missing: correiosMissing,
       bling: Boolean(env.BLING_CLIENT_ID && env.BLING_CLIENT_SECRET),
+      whatsapp: whatsappConfigured(env),
+      whatsapp_password_template: Boolean(env.WHATSAPP_PASSWORD_TEMPLATE),
+      whatsapp_cart_template: Boolean(env.WHATSAPP_CART_TEMPLATE),
     },
   });
   if (method === "GET" && parts[0] === "categories") return categories(env);
@@ -376,6 +519,10 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (method === "GET" && parts.join("/") === "payments/status") return publicPaymentStatus(request, env);
   if (method === "POST" && parts.join("/") === "auth/register") return register(request, env);
   if (method === "POST" && parts.join("/") === "auth/login") return login(request, env);
+  if (method === "POST" && parts.join("/") === "auth/password/forgot") return forgotPassword(request, env);
+  if (method === "POST" && parts.join("/") === "auth/password/reset") return resetPassword(request, env);
+  if (method === "POST" && parts.join("/") === "cart-recovery") return createCartRecovery(request, env);
+  if (method === "GET" && parts.join("/") === "cart-recovery") return recoverCart(request, env);
   if (method === "POST" && parts.join("/") === "auth/logout") {
     await deleteCurrentSession(request, env);
     return json({ ok: true }, 200, { "Set-Cookie": clearSessionCookie() });

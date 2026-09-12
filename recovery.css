@@ -1,0 +1,12 @@
+.account-help{padding:0;border:0;background:none;text-align:left;cursor:pointer}
+.account-form-intro{grid-column:1/-1;margin:0 0 4px;color:#aeb8c7;line-height:1.6}
+.account-form#account-forgot label,.account-form#account-reset label{grid-column:1/-1}
+.cart-recovery{display:grid;gap:10px;margin:18px 0;padding:18px 0;border-top:1px solid #ffffff30;border-bottom:1px solid #ffffff30}
+.cart-recovery>strong{color:#d1b77f}
+.cart-recovery p{margin:0;color:#aeb8c7;font-size:11px;line-height:1.5}
+.cart-recovery label{display:grid;gap:7px;color:#d1b77f;font-size:9px;text-transform:uppercase;letter-spacing:.08em}
+.cart-recovery input{box-sizing:border-box;width:100%;min-height:44px;padding:0 12px}
+.cart-recovery button{min-height:44px;border:1px solid #b6914a;background:#050505;color:#d1b77f;cursor:pointer}
+.cart-recovery button:disabled{opacity:.6;cursor:wait}
+.cart-recovery-message{min-height:16px;color:#7de2b4!important;line-height:1.4}
+.cart-recovery-message.error{color:#f0a2a2!important}
