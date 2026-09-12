@@ -14,11 +14,9 @@ export interface Env {
   CORREIOS_DR?: string;
   BLING_CLIENT_ID?: string;
   BLING_CLIENT_SECRET?: string;
-  WHATSAPP_ACCESS_TOKEN?: string;
-  WHATSAPP_PHONE_NUMBER_ID?: string;
-  WHATSAPP_PASSWORD_TEMPLATE?: string;
-  WHATSAPP_CART_TEMPLATE?: string;
-  WHATSAPP_TEMPLATE_LANGUAGE?: string;
+  EVOLUTION_API_URL?: string;
+  EVOLUTION_API_KEY?: string;
+  EVOLUTION_INSTANCE?: string;
 }
 
 export interface SessionCustomer {

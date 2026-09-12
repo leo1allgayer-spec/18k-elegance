@@ -5,7 +5,7 @@ import { createMercadoPagoCheckout, mercadoPagoDiagnostic, mercadoPagoWebhook, p
 import { correiosConfigured, publicCorreiosQuote } from "../_lib/correios";
 import { blingCallback, blingConnect, blingStatus, disconnectBling } from "../_lib/bling";
 import { adminPersonalizationImage, publicProductImage, uploadPersonalization, uploadProductImage } from "../_lib/personalization";
-import { normalizeBrazilPhone, sendWhatsAppTemplate, whatsappConfigured } from "../_lib/whatsapp";
+import { normalizeBrazilPhone, sendWhatsAppMessage, whatsappConfigured } from "../_lib/whatsapp";
 
 type RegisterBody = { name?: string; email?: string; phone?: string; birth_date?: string; password?: string };
 type AccountBody = { name?: string; phone?: string; birth_date?: string };
@@ -382,7 +382,7 @@ async function login(request: Request, env: Env): Promise<Response> {
 }
 
 async function forgotPassword(request: Request, env: Env): Promise<Response> {
-  if (!whatsappConfigured(env) || !env.WHATSAPP_PASSWORD_TEMPLATE) return apiError("A recuperação por WhatsApp ainda não está configurada.", 503, "WHATSAPP_NOT_CONFIGURED");
+  if (!whatsappConfigured(env)) return apiError("A recuperação por WhatsApp ainda não está configurada.", 503, "WHATSAPP_NOT_CONFIGURED");
   const body = await readJson<ForgotPasswordBody>(request);
   const phone = normalizeBrazilPhone(body.phone || "");
   if (!phone) return apiError("Informe um celular válido com DDD.");
@@ -404,10 +404,9 @@ async function forgotPassword(request: Request, env: Env): Promise<Response> {
     env.DB.prepare("INSERT INTO password_reset_tokens(customer_id,token_hash,expires_at) VALUES(?,?,?)").bind(customer.id, tokenHash, expiresAt),
   ]);
   try {
-    await sendWhatsAppTemplate(env, phone, env.WHATSAPP_PASSWORD_TEMPLATE!, [
-      customer.name.trim().split(/\s+/)[0],
-      publicUrl(request, "conta.html", token),
-    ]);
+    const firstName = customer.name.trim().split(/\s+/)[0];
+    const resetUrl = publicUrl(request, "conta.html", token);
+    await sendWhatsAppMessage(env, phone, `Olá, ${firstName}!\n\nVocê solicitou a recuperação da sua senha da *Elegance 18K*.\n\nCrie uma nova senha pelo link abaixo:\n${resetUrl}\n\nO link expira em 30 minutos. Se você não fez essa solicitação, ignore esta mensagem.`);
   } catch {
     await env.DB.prepare("DELETE FROM password_reset_tokens WHERE token_hash=?").bind(tokenHash).run();
     return apiError("Não foi possível enviar a mensagem agora. Tente novamente em instantes.", 502, "WHATSAPP_SEND_FAILED");
@@ -438,7 +437,7 @@ async function resetPassword(request: Request, env: Env): Promise<Response> {
 }
 
 async function createCartRecovery(request: Request, env: Env): Promise<Response> {
-  if (!whatsappConfigured(env) || !env.WHATSAPP_CART_TEMPLATE) return apiError("O envio do carrinho por WhatsApp ainda não está configurado.", 503, "WHATSAPP_NOT_CONFIGURED");
+  if (!whatsappConfigured(env)) return apiError("O envio do carrinho por WhatsApp ainda não está configurado.", 503, "WHATSAPP_NOT_CONFIGURED");
   const body = await readJson<CartRecoveryBody>(request);
   const phone = normalizeBrazilPhone(body.phone || "");
   const cart = sanitizeCart(body.cart || []);
@@ -455,7 +454,8 @@ async function createCartRecovery(request: Request, env: Env): Promise<Response>
   await env.DB.prepare("INSERT INTO cart_recovery_links(phone,token_hash,cart_json,expires_at) VALUES(?,?,?,?)")
     .bind(phone, tokenHash, cartJson, expiresAt).run();
   try {
-    await sendWhatsAppTemplate(env, phone, env.WHATSAPP_CART_TEMPLATE!, [publicUrl(request, "carrinho.html", token)]);
+    const cartUrl = publicUrl(request, "carrinho.html", token);
+    await sendWhatsAppMessage(env, phone, `Seu carrinho da *Elegance 18K* está guardado ✨\n\nVolte para suas joias pelo link:\n${cartUrl}\n\nO link fica disponível por 7 dias.`);
   } catch {
     await env.DB.prepare("DELETE FROM cart_recovery_links WHERE token_hash=?").bind(tokenHash).run();
     return apiError("Não foi possível enviar o carrinho agora. Tente novamente em instantes.", 502, "WHATSAPP_SEND_FAILED");
@@ -501,8 +501,7 @@ async function route(request: Request, env: Env): Promise<Response> {
       correios_missing: correiosMissing,
       bling: Boolean(env.BLING_CLIENT_ID && env.BLING_CLIENT_SECRET),
       whatsapp: whatsappConfigured(env),
-      whatsapp_password_template: Boolean(env.WHATSAPP_PASSWORD_TEMPLATE),
-      whatsapp_cart_template: Boolean(env.WHATSAPP_CART_TEMPLATE),
+      evolution_api: whatsappConfigured(env),
     },
   });
   if (method === "GET" && parts[0] === "categories") return categories(env);

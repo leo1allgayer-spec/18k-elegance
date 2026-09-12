@@ -8,29 +8,22 @@ export function normalizeBrazilPhone(value: string): string | null {
 }
 
 export function whatsappConfigured(env: Env): boolean {
-  return Boolean(env.WHATSAPP_ACCESS_TOKEN && env.WHATSAPP_PHONE_NUMBER_ID);
+  return Boolean(env.EVOLUTION_API_URL && env.EVOLUTION_API_KEY && env.EVOLUTION_INSTANCE);
 }
 
-export async function sendWhatsAppTemplate(env: Env, to: string, templateName: string, values: string[]): Promise<void> {
-  if (!env.WHATSAPP_ACCESS_TOKEN || !env.WHATSAPP_PHONE_NUMBER_ID) throw new Error("WHATSAPP_NOT_CONFIGURED");
-  const response = await fetch(`https://graph.facebook.com/v23.0/${encodeURIComponent(env.WHATSAPP_PHONE_NUMBER_ID)}/messages`, {
+export async function sendWhatsAppMessage(env: Env, to: string, text: string): Promise<void> {
+  if (!env.EVOLUTION_API_URL || !env.EVOLUTION_API_KEY || !env.EVOLUTION_INSTANCE) throw new Error("EVOLUTION_NOT_CONFIGURED");
+  const baseUrl = env.EVOLUTION_API_URL.trim().replace(/\/+$/, "");
+  if (!/^https:\/\//i.test(baseUrl)) throw new Error("EVOLUTION_URL_INVALID");
+  const response = await fetch(`${baseUrl}/message/sendText/${encodeURIComponent(env.EVOLUTION_INSTANCE)}`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${env.WHATSAPP_ACCESS_TOKEN}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      recipient_type: "individual",
-      to,
-      type: "template",
-      template: {
-        name: templateName,
-        language: { code: env.WHATSAPP_TEMPLATE_LANGUAGE || "pt_BR" },
-        components: [{ type: "body", parameters: values.map(text => ({ type: "text", text })) }],
-      },
-    }),
+    headers: { apikey: env.EVOLUTION_API_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ number: to, text, delay: 800, linkPreview: true }),
+    signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) {
     const detail = (await response.text()).slice(0, 800);
-    console.error("WhatsApp Cloud API error", { status: response.status, detail });
-    throw new Error("WHATSAPP_SEND_FAILED");
+    console.error("Evolution API error", { status: response.status, detail });
+    throw new Error("EVOLUTION_SEND_FAILED");
   }
 }
