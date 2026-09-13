@@ -219,6 +219,7 @@ function renderCart() {
   const discountRow = document.querySelector(".coupon-discount");
   if (discountRow) { discountRow.hidden = !discountCents; document.querySelector("#cart-discount").textContent = `− ${money(discountCents / 100)}`; }
   const couponInput = document.querySelector("#cart-coupon"); if (couponInput && savedCoupon?.code) couponInput.value = savedCoupon.code;
+  const clearButton = document.querySelector("#clear-cart"); if (clearButton) clearButton.hidden = !cart.length;
   document.querySelectorAll("[data-remove]").forEach((button) => button.addEventListener("click", () => {
     cart.splice(Number(button.dataset.remove), 1);
     localStorage.removeItem("elegance-coupon");
@@ -227,6 +228,15 @@ function renderCart() {
   }));
 }
 renderCart();
+
+document.querySelector("#clear-cart")?.addEventListener("click", () => {
+  if (!confirm("Deseja esvaziar toda a sacola?")) return;
+  if (!confirm("Confirme novamente: remover todos os produtos da sacola?")) return;
+  localStorage.removeItem("elegance-cart");
+  localStorage.removeItem("elegance-coupon");
+  saveCart([]);
+  renderCart();
+});
 
 async function recoverCartFromLink() {
   const token = new URLSearchParams(location.search).get("recuperar");
