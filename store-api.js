@@ -78,7 +78,8 @@
       const {product}=productData,image=product.images?.[0]?.url||'assets/logo-oficial.png',variant=product.variants?.[0];
       document.title=`${product.name} | Elegance 18K`;document.querySelector('#detail-name').textContent=product.name;document.querySelector('#detail-price').textContent=money(product.price_cents);
       const main=document.querySelector('#detail-image');main.src=image;main.alt=product.name;
-      document.querySelector('.thumbs').innerHTML=product.images?.length?product.images.map((item,index)=>`<button class="${index?'':'active'}"><img src="${esc(item.url)}" alt="${esc(item.alt_text||product.name)}"></button>`).join(''):`<button class="active"><img src="${esc(image)}" alt="${esc(product.name)}"></button>`;
+      const thumbs=document.querySelector('.thumbs');thumbs.innerHTML=product.images?.length?product.images.map((item,index)=>`<button type="button" class="${index?'':'active'}"><img src="${esc(item.url)}" alt="${esc(item.alt_text||product.name)}"></button>`).join(''):`<button type="button" class="active"><img src="${esc(image)}" alt="${esc(product.name)}"></button>`;
+      thumbs.addEventListener('click',event=>{const button=event.target.closest('button'),thumb=button?.querySelector('img');if(!button||!thumb)return;main.src=thumb.src;main.alt=thumb.alt;thumbs.querySelectorAll('button').forEach(item=>item.classList.toggle('active',item===button))});
       document.querySelector('.breadcrumb').textContent=`Início / ${product.category_name||'Joias'} / ${product.name}`;
       document.querySelector('.description').textContent=product.description||'Semijoia Elegance com acabamento premium.';
       const detailList=document.querySelector('#product-details'),details=[
