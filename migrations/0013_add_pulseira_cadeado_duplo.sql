@@ -7,14 +7,14 @@ SELECT id,
   'pulseira-cadeado-duplo-5mm-fecho-gaveta-duplo',
   'PUL-CAD-DUP-5MM',
   'Pulseira banhada a Ouro 18K, desenvolvida para quem busca delicadeza, sofisticação e qualidade em cada detalhe.',
-  27990,26590,8,'20 cm, 21 cm ou 22 cm','Latão (liga metálica de cobre e zinco)',
+  29500,28025,8,'20 cm, 21 cm ou 22 cm','Latão (liga metálica de cobre e zinco)',
   'Verniz cataforético, que proporciona maior durabilidade e qualidade à semijoia.',12,1,1
 FROM categories
 WHERE slug='linha-masculina'
   AND NOT EXISTS (SELECT 1 FROM products WHERE slug='pulseira-cadeado-duplo-5mm-fecho-gaveta-duplo');
 
 INSERT INTO product_variants (product_id,name,sku,finish,price_cents,stock,active)
-SELECT id,'Padrão','PUL-CAD-DUP-5MM-PADRAO','Dourado 18K',27990,1,1
+SELECT id,'Padrão','PUL-CAD-DUP-5MM-PADRAO','Dourado 18K',29500,1,1
 FROM products
 WHERE slug='pulseira-cadeado-duplo-5mm-fecho-gaveta-duplo'
   AND NOT EXISTS (SELECT 1 FROM product_variants WHERE sku='PUL-CAD-DUP-5MM-PADRAO');
