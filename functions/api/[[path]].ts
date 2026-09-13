@@ -280,6 +280,13 @@ async function products(request: Request, env: Env): Promise<Response> {
   const category = url.searchParams.get("category");
   const search = url.searchParams.get("q")?.trim();
   const featured = url.searchParams.get("featured");
+  const sort = url.searchParams.get("sort") || "popular";
+  const orderBy: Record<string, string> = {
+    popular: "p.featured DESC, p.created_at DESC, p.id DESC",
+    newest: "p.created_at DESC, p.id DESC",
+    "price-asc": "p.price_cents ASC, p.id DESC",
+    "price-desc": "p.price_cents DESC, p.id DESC",
+  };
   const conditions = ["p.active = 1"];
   const bindings: unknown[] = [];
   if (category) { conditions.push("c.slug = ?"); bindings.push(category); }
@@ -290,7 +297,7 @@ async function products(request: Request, env: Env): Promise<Response> {
     (SELECT url FROM product_images WHERE product_id = p.id ORDER BY sort_order, id LIMIT 1) AS image_url,
     COALESCE((SELECT SUM(stock) FROM product_variants WHERE product_id = p.id AND active = 1), 0) AS stock
     FROM products p LEFT JOIN categories c ON c.id = p.category_id
-    WHERE ${conditions.join(" AND ")} ORDER BY p.featured DESC, p.created_at DESC LIMIT 100`).bind(...bindings);
+    WHERE ${conditions.join(" AND ")} ORDER BY ${orderBy[sort] || orderBy.popular} LIMIT 100`).bind(...bindings);
   const result = await statement.all();
   return json({ ok: true, products: result.results }, 200, { "Cache-Control": "public, max-age=60" });
 }
