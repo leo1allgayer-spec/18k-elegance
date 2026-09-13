@@ -4,7 +4,7 @@ import { currentCustomer, hashPassword } from "./auth";
 import { calculateCorreiosQuotes } from "./correios";
 import { giftCardBalance, syncGiftPayment } from "./gift-cards";
 
-type CheckoutItem = { product_id?: number; variant_id?: number; quantity?: number; personalization?: { engraving_text?: string; image_upload_id?: string; image_name?: string } };
+type CheckoutItem = { product_id?: number; variant_id?: number; quantity?: number; personalization?: { engraving_text?: string; image_upload_id?: string; image_name?: string; size?: string } };
 type CheckoutBody = {
   customer?: { name?: string; email?: string; phone?: string; cpf?: string };
   shipping?: {
@@ -98,6 +98,10 @@ async function resolveItems(env: Env, items: CheckoutItem[]): Promise<ProductRow
     if (!row || row.stock < quantity) throw new Error("OUT_OF_STOCK");
     const engravingText = item.personalization?.engraving_text?.trim() || "";
     const imageUploadId = item.personalization?.image_upload_id?.trim() || "";
+    const size = item.personalization?.size?.trim() || "";
+    const allowedSizes = row.category_slug === "linha-masculina" ? (/pulseira/i.test(row.name) ? ["20 cm", "21 cm", "22 cm"] : ["60 cm", "70 cm"]) : [];
+    if (allowedSizes.length && !allowedSizes.includes(size)) throw new Error("INVALID_SIZE");
+    if (!allowedSizes.length && size) throw new Error("INVALID_SIZE");
     if (engravingText && !row.engraving_text_enabled) throw new Error("INVALID_PERSONALIZATION_TEXT");
     if (imageUploadId && !row.engraving_image_enabled) throw new Error("INVALID_PERSONALIZATION_IMAGE");
     if (engravingText.length > 80) throw new Error("INVALID_PERSONALIZATION");
@@ -107,7 +111,7 @@ async function resolveItems(env: Env, items: CheckoutItem[]): Promise<ProductRow
       if (!upload) throw new Error("INVALID_PERSONALIZATION_IMAGE");
     }
     const fee = (engravingText ? row.engraving_text_price_cents : 0) + (imageUploadId ? row.engraving_image_price_cents : 0);
-    const personalization = engravingText || imageUploadId ? { engraving_text: engravingText || null, image_upload_id: imageUploadId || null, image_name: item.personalization?.image_name?.slice(0, 160) || null } : null;
+    const personalization = engravingText || imageUploadId || size ? { engraving_text: engravingText || null, image_upload_id: imageUploadId || null, image_name: item.personalization?.image_name?.slice(0, 160) || null, size: size || null } : null;
     resolved.push({ ...row, unit_price_cents: row.unit_price_cents + fee, stock: quantity, personalization_json: personalization ? JSON.stringify(personalization) : null, personalization_fee_cents: fee, image_upload_id: imageUploadId || null });
   }
   if (!resolved.length) throw new Error("EMPTY_CART");

@@ -32,6 +32,15 @@
       finally{button.disabled=false;button.textContent='Calcular'}
     });
   }
+  function enableSizeSelection(product){
+    const purchase=document.querySelector('.purchase-card'),add=document.querySelector('.add-cart');
+    if(!purchase||!add||product.category_slug!=='linha-masculina')return;
+    const bracelet=/pulseira/i.test(product.name),sizes=bracelet?['20 cm','21 cm','22 cm']:['60 cm','70 cm'];
+    const selector=document.createElement('div');selector.className='size-selector';
+    selector.innerHTML=`<b>${bracelet?'Tamanho da pulseira':'Tamanho da corrente'}</b><div class="size-options" role="group" aria-label="Escolha o tamanho">${sizes.map((size,index)=>`<button type="button" class="size-option${index?'':' active'}" data-size="${esc(size)}" aria-pressed="${index?'false':'true'}">${esc(size)}</button>`).join('')}</div>`;
+    purchase.insertBefore(selector,purchase.querySelector('.options-row'));add.dataset.size=sizes[0];
+    selector.addEventListener('click',event=>{const button=event.target.closest('.size-option');if(!button)return;selector.querySelectorAll('.size-option').forEach(item=>{const active=item===button;item.classList.toggle('active',active);item.setAttribute('aria-pressed',String(active))});add.dataset.size=button.dataset.size||''});
+  }
   async function catalog(){
     const grid=document.querySelector('.catalog-grid');if(!grid)return;
     const params=new URLSearchParams(location.search),category=params.get('categoria')||'',query=params.get('q')||'';
@@ -87,6 +96,7 @@
       window.loadProductReviews?.(product);
       enablePhotoPersonalization(product);
       const finish=document.querySelector('.finish-choice span');if(finish)finish.textContent=variant?.finish||'Dourado 18K';
+      enableSizeSelection(product);
       enableProductShipping(product,variant);
     }catch(error){console.warn('Produto usando conteúdo de apresentação.',error)}
   }

@@ -16,7 +16,7 @@ type ResetPasswordBody = { token?: string; password?: string };
 type RecoveryCartItem = {
   name?: string; price?: number; image?: string; qty?: number;
   product_id?: number | null; variant_id?: number | null;
-  personalization?: { engraving_text?: string; image_upload_id?: string; image_name?: string } | null;
+  personalization?: { engraving_text?: string; image_upload_id?: string; image_name?: string; size?: string } | null;
 };
 type CartRecoveryBody = { phone?: string; cart?: RecoveryCartItem[] };
 type ProductBody = {
@@ -62,6 +62,7 @@ function sanitizeCart(items: RecoveryCartItem[]): RecoveryCartItem[] | null {
       engraving_text: String(item.personalization.engraving_text || "").slice(0, 80) || undefined,
       image_upload_id: String(item.personalization.image_upload_id || "").slice(0, 120) || undefined,
       image_name: String(item.personalization.image_name || "").slice(0, 160) || undefined,
+      size: String(item.personalization.size || "").slice(0, 20) || undefined,
     } : null;
     return {
       name, price, image, qty,
