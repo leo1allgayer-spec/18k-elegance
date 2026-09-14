@@ -5,10 +5,10 @@
   const favoriteKey='elegance-favorites';
   const getFavorites=()=>{try{const value=JSON.parse(localStorage.getItem(favoriteKey)||'[]');return Array.isArray(value)?value:[]}catch{return[]}};
   const saveFavorites=value=>localStorage.setItem(favoriteKey,JSON.stringify(value));
-  const favoriteMarkup=slug=>{const active=getFavorites().includes(slug);return `<button type="button" class="favorite${active?' active':''}" data-favorite="${esc(slug)}" aria-label="${active?'Remover dos favoritos':'Adicionar aos favoritos'}" aria-pressed="${active?'true':'false'}">${active?'♥':'♡'}</button>`};
+  const favoriteMarkup=slug=>{const active=getFavorites().includes(slug);return `<button type="button" class="favorite${active?' active':''}" data-favorite="${esc(slug)}" aria-label="${active?'Remover dos favoritos':'Adicionar aos favoritos'}" aria-pressed="${active?'true':'false'}">${active?'♥︎':'♡'}</button>`};
   function bindFavorites(container,favoritesOnly=false){
     if(!container||container.dataset.favoritesBound)return;container.dataset.favoritesBound='true';
-    container.addEventListener('click',event=>{const button=event.target.closest('[data-favorite]');if(!button)return;event.preventDefault();event.stopPropagation();const slug=button.dataset.favorite,list=getFavorites(),index=list.indexOf(slug);if(index>=0)list.splice(index,1);else list.push(slug);saveFavorites(list);document.querySelectorAll(`[data-favorite="${slug}"]`).forEach(item=>{const active=list.includes(slug);item.classList.toggle('active',active);item.textContent=item.classList.contains('wish-button')?(active?'♥ Remover dos favoritos':'♡ Adicionar aos favoritos'):(active?'♥':'♡');item.setAttribute('aria-pressed',String(active));item.setAttribute('aria-label',active?'Remover dos favoritos':'Adicionar aos favoritos')});if(favoritesOnly&&!list.includes(slug)){button.closest('article')?.remove();if(!container.querySelector('article'))container.innerHTML='<p class="catalog-empty">Você ainda não possui produtos favoritos.</p>'}});
+    container.addEventListener('click',event=>{const button=event.target.closest('[data-favorite]');if(!button)return;event.preventDefault();event.stopPropagation();const slug=button.dataset.favorite,list=getFavorites(),index=list.indexOf(slug);if(index>=0)list.splice(index,1);else list.push(slug);saveFavorites(list);document.querySelectorAll(`[data-favorite="${slug}"]`).forEach(item=>{const active=list.includes(slug);item.classList.toggle('active',active);item.textContent=item.classList.contains('wish-button')?(active?'♥︎ Remover dos favoritos':'♡ Adicionar aos favoritos'):(active?'♥︎':'♡');item.setAttribute('aria-pressed',String(active));item.setAttribute('aria-label',active?'Remover dos favoritos':'Adicionar aos favoritos')});if(favoritesOnly&&!list.includes(slug)){button.closest('article')?.remove();if(!container.querySelector('article'))container.innerHTML='<p class="catalog-empty">Você ainda não possui produtos favoritos.</p>'}});
   }
   function enablePhotoPersonalization(product){
     const panel=document.querySelector('.photo-personalization'),add=document.querySelector('.add-cart'),gallery=document.querySelector('.main-product-image');
@@ -110,7 +110,7 @@
       window.loadProductReviews?.(product);
       enablePhotoPersonalization(product);
       const finish=document.querySelector('.finish-choice span');if(finish)finish.textContent=variant?.finish||'Dourado 18K';
-      const wish=document.querySelector('.wish-button');if(wish){wish.dataset.favorite=product.slug;const active=getFavorites().includes(product.slug);wish.classList.toggle('active',active);wish.textContent=active?'♥ Remover dos favoritos':'♡ Adicionar aos favoritos';wish.setAttribute('aria-pressed',String(active));bindFavorites(document.querySelector('.purchase-card'))}
+      const wish=document.querySelector('.wish-button');if(wish){wish.dataset.favorite=product.slug;const active=getFavorites().includes(product.slug);wish.classList.toggle('active',active);wish.textContent=active?'♥︎ Remover dos favoritos':'♡ Adicionar aos favoritos';wish.setAttribute('aria-pressed',String(active));bindFavorites(document.querySelector('.purchase-card'))}
       enableSizeSelection(product);
       enableProductShipping(product,variant);
     }catch(error){console.warn('Produto usando conteúdo de apresentação.',error)}
