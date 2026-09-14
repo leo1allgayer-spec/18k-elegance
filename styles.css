@@ -13,6 +13,8 @@ html,body{max-width:100%;overflow-x:hidden}@media(min-width:641px){.hero-content
 .hero-content>.hero-tagline{font-size:15px}
 @media(max-width:640px){.hero-content>.hero-tagline{font-size:14px}}
 
+.review-form .review-photo-input{padding:10px;cursor:pointer}.review-form .review-photo-input::file-selector-button{margin-right:12px;padding:9px 12px;border:1px solid var(--gold);background:#050505;color:var(--gold-light);cursor:pointer}.review-photo-help{margin-top:-7px;color:#999;font-size:9px}.review-photo-preview{position:relative;width:110px}.review-photo-preview img{display:block;width:110px;height:110px;object-fit:cover;border:1px solid #b6914a55}.review-photo-preview button{width:100%;padding:7px;border:1px solid #b6914a55;border-top:0;background:#050505;color:var(--gold-light);font-size:9px;cursor:pointer}
+
 @media(max-width:640px){.header{grid-template-columns:48px minmax(0,1fr) auto;column-gap:8px}.header>.menu{grid-column:1}.header>.header-logo{grid-column:2;justify-self:center;min-width:0}.header .header-logo img{width:78px!important;max-width:100%}.header>.actions{grid-column:3;justify-self:end;gap:5px}.header .actions>a,.header .actions>button,.header .cart-link{min-width:36px!important;width:36px!important;height:36px!important}}
 
 @media(min-width:641px){.header{height:132px;grid-template-rows:76px 56px}.header .header-logo img{width:118px;max-height:66px;object-fit:contain}}

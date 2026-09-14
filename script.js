@@ -343,11 +343,46 @@ window.eleganceCheckout = {
 };
 updateCheckout();
 
-document.querySelector(".review-form")?.addEventListener("submit", (event) => {
+const reviewForm = document.querySelector(".review-form");
+const reviewPhoto = reviewForm?.querySelector("#review-photo");
+const reviewPhotoPreview = reviewForm?.querySelector(".review-photo-preview");
+let reviewPhotoUrl = "";
+
+function clearReviewPhoto() {
+  if (reviewPhotoUrl) URL.revokeObjectURL(reviewPhotoUrl);
+  reviewPhotoUrl = "";
+  if (reviewPhoto) reviewPhoto.value = "";
+  if (reviewPhotoPreview) {
+    reviewPhotoPreview.hidden = true;
+    reviewPhotoPreview.querySelector("img").removeAttribute("src");
+  }
+}
+
+reviewPhoto?.addEventListener("change", () => {
+  const file = reviewPhoto.files?.[0];
+  const feedback = reviewForm.querySelector(".review-feedback");
+  if (!file) return clearReviewPhoto();
+  if (!file.type.startsWith("image/") || file.size > 5 * 1024 * 1024) {
+    clearReviewPhoto();
+    feedback.textContent = "Escolha uma imagem JPG, PNG ou WebP de até 5 MB.";
+    return;
+  }
+  if (reviewPhotoUrl) URL.revokeObjectURL(reviewPhotoUrl);
+  reviewPhotoUrl = URL.createObjectURL(file);
+  reviewPhotoPreview.querySelector("img").src = reviewPhotoUrl;
+  reviewPhotoPreview.hidden = false;
+  feedback.textContent = "";
+});
+
+reviewPhotoPreview?.querySelector("button")?.addEventListener("click", clearReviewPhoto);
+
+reviewForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   const feedback = event.currentTarget.querySelector(".review-feedback");
-  feedback.textContent = "Obrigada! Sua avaliação foi registrada para esta apresentação.";
+  const hasPhoto = Boolean(reviewPhoto?.files?.length);
+  feedback.textContent = hasPhoto ? "Obrigada! Sua avaliação e sua foto foram registradas para esta apresentação." : "Obrigada! Sua avaliação foi registrada para esta apresentação.";
   event.currentTarget.reset();
+  clearReviewPhoto();
 });
 
 document.querySelector(".tracking-form")?.addEventListener("submit", (event) => {
