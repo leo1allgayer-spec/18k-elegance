@@ -2,6 +2,14 @@
   const money=cents=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format((Number(cents)||0)/100);
   const esc=value=>String(value??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
   const api=async path=>{const response=await fetch(`/api/${path}`);if(!response.ok)throw new Error('API indisponível');return response.json()};
+  const favoriteKey='elegance-favorites';
+  const getFavorites=()=>{try{const value=JSON.parse(localStorage.getItem(favoriteKey)||'[]');return Array.isArray(value)?value:[]}catch{return[]}};
+  const saveFavorites=value=>localStorage.setItem(favoriteKey,JSON.stringify(value));
+  const favoriteMarkup=slug=>{const active=getFavorites().includes(slug);return `<button type="button" class="favorite${active?' active':''}" data-favorite="${esc(slug)}" aria-label="${active?'Remover dos favoritos':'Adicionar aos favoritos'}" aria-pressed="${active?'true':'false'}">${active?'♥':'♡'}</button>`};
+  function bindFavorites(container,favoritesOnly=false){
+    if(!container||container.dataset.favoritesBound)return;container.dataset.favoritesBound='true';
+    container.addEventListener('click',event=>{const button=event.target.closest('[data-favorite]');if(!button)return;event.preventDefault();event.stopPropagation();const slug=button.dataset.favorite,list=getFavorites(),index=list.indexOf(slug);if(index>=0)list.splice(index,1);else list.push(slug);saveFavorites(list);document.querySelectorAll(`[data-favorite="${slug}"]`).forEach(item=>{const active=list.includes(slug);item.classList.toggle('active',active);item.textContent=item.classList.contains('wish-button')?(active?'♥ Remover dos favoritos':'♡ Adicionar aos favoritos'):(active?'♥':'♡');item.setAttribute('aria-pressed',String(active));item.setAttribute('aria-label',active?'Remover dos favoritos':'Adicionar aos favoritos')});if(favoritesOnly&&!list.includes(slug)){button.closest('article')?.remove();if(!container.querySelector('article'))container.innerHTML='<p class="catalog-empty">Você ainda não possui produtos favoritos.</p>'}});
+  }
   function enablePhotoPersonalization(product){
     const panel=document.querySelector('.photo-personalization'),add=document.querySelector('.add-cart'),gallery=document.querySelector('.main-product-image');
     const textEnabled=Boolean(product.engraving_text_enabled),imageEnabled=Boolean(product.engraving_image_enabled),enabled=textEnabled||imageEnabled;
@@ -43,18 +51,19 @@
   }
   async function catalog(){
     const grid=document.querySelector('.catalog-grid');if(!grid)return;
-    const params=new URLSearchParams(location.search),category=params.get('categoria')||'',query=params.get('q')||'',order=params.get('ordenar')||'popular',modes=['popular','newest','price-asc','price-desc'];
+    const params=new URLSearchParams(location.search),category=params.get('categoria')||'',query=params.get('q')||'',favoritesOnly=params.get('favoritos')==='1',order=params.get('ordenar')||'popular',modes=['popular','newest','price-asc','price-desc'];
     const search=new URLSearchParams();if(category)search.set('category',category);if(query)search.set('q',query);search.set('sort',modes.includes(order)?order:'popular');
     try{
       const data=await api(`products?${search}`),sort=document.querySelector('.catalog-toolbar select'),mode=Math.max(0,modes.indexOf(order));if(sort)sort.selectedIndex=mode;
-      grid.innerHTML=data.products.length?data.products.map(product=>`<article data-category="${esc(product.category_slug||'')}" data-name="${esc(product.name)}"><a href="produto.html?produto=${encodeURIComponent(product.slug)}"><div class="catalog-photo"><img src="${esc(product.image_url||'assets/logo-oficial.png')}" alt="${esc(product.name)}" loading="lazy">${product.featured?'<span>DESTAQUE</span>':''}<button class="favorite" aria-label="Favoritar">♡</button></div><h2>${esc(product.name)}</h2><p>${money(product.price_cents)}</p><small>${product.pix_price_cents?`${money(product.pix_price_cents)} no Pix`:product.stock>0?'Disponível':'Indisponível'}</small></a></article>`).join(''):'<p class="catalog-empty">Nenhum produto cadastrado nesta categoria.</p>';
+      const visibleProducts=favoritesOnly?data.products.filter(product=>getFavorites().includes(product.slug)):data.products;
+      grid.innerHTML=visibleProducts.length?visibleProducts.map(product=>`<article data-category="${esc(product.category_slug||'')}" data-name="${esc(product.name)}"><a href="produto.html?produto=${encodeURIComponent(product.slug)}"><div class="catalog-photo"><img src="${esc(product.image_url||'assets/logo-oficial.png')}" alt="${esc(product.name)}" loading="lazy">${product.featured?'<span>DESTAQUE</span>':''}${favoriteMarkup(product.slug)}</div><h2>${esc(product.name)}</h2><p>${money(product.price_cents)}</p><small>${product.pix_price_cents?`${money(product.pix_price_cents)} no Pix`:product.stock>0?'Disponível':'Indisponível'}</small></a></article>`).join(''):`<p class="catalog-empty">${favoritesOnly?'Você ainda não possui produtos favoritos.':'Nenhum produto cadastrado nesta categoria.'}</p>`;bindFavorites(grid,favoritesOnly);
       sort?.addEventListener('change',()=>{const next=new URLSearchParams(location.search),value=modes[sort.selectedIndex]||'popular';if(value==='popular')next.delete('ordenar');else next.set('ordenar',value);const queryString=next.toString();location.assign(location.pathname+(queryString?'?'+queryString:''))});
       document.querySelectorAll('.category-tabs a,.store-header nav a').forEach(link=>{const linkCategory=new URL(link.href,location.href).searchParams.get('categoria');link.classList.toggle('active',linkCategory===category||(!linkCategory&&!category&&link.pathname.endsWith('catalogo.html')))});
     }catch(error){console.warn('Catálogo usando conteúdo de apresentação.',error)}
   }
   async function featured(){
     const grid=document.querySelector('.products .product-grid');if(!grid)return;
-    try{const data=await api('products');grid.innerHTML=data.products.length?data.products.slice(0,4).map(product=>`<article><a href="produto.html?produto=${encodeURIComponent(product.slug)}"><div class="product-photo"><img src="${esc(product.image_url||'assets/logo-oficial.png')}" alt="${esc(product.name)}" loading="lazy">${product.featured?'<span>DESTAQUE</span>':''}<button aria-label="Favoritar">♡</button></div><h3>${esc(product.name)}</h3><p>${money(product.price_cents)}</p><small>${product.pix_price_cents?`${money(product.pix_price_cents)} no Pix`:product.stock>0?'Disponível':'Indisponível'}</small></a></article>`).join(''):'<p class="catalog-empty">Novos produtos serão adicionados em breve.</p>'}catch(error){grid.innerHTML='<p class="catalog-empty">Não foi possível carregar os produtos agora.</p>';console.warn(error)}
+    try{const data=await api('products');grid.innerHTML=data.products.length?data.products.slice(0,4).map(product=>`<article><a href="produto.html?produto=${encodeURIComponent(product.slug)}"><div class="product-photo"><img src="${esc(product.image_url||'assets/logo-oficial.png')}" alt="${esc(product.name)}" loading="lazy">${product.featured?'<span>DESTAQUE</span>':''}${favoriteMarkup(product.slug)}</div><h3>${esc(product.name)}</h3><p>${money(product.price_cents)}</p><small>${product.pix_price_cents?`${money(product.pix_price_cents)} no Pix`:product.stock>0?'Disponível':'Indisponível'}</small></a></article>`).join(''):'<p class="catalog-empty">Novos produtos serão adicionados em breve.</p>';bindFavorites(grid)}catch(error){grid.innerHTML='<p class="catalog-empty">Não foi possível carregar os produtos agora.</p>';console.warn(error)}
   }
   async function detail(){
     const root=document.querySelector('.product-detail');if(!root)return;
@@ -101,6 +110,7 @@
       window.loadProductReviews?.(product);
       enablePhotoPersonalization(product);
       const finish=document.querySelector('.finish-choice span');if(finish)finish.textContent=variant?.finish||'Dourado 18K';
+      const wish=document.querySelector('.wish-button');if(wish){wish.dataset.favorite=product.slug;const active=getFavorites().includes(product.slug);wish.classList.toggle('active',active);wish.textContent=active?'♥ Remover dos favoritos':'♡ Adicionar aos favoritos';wish.setAttribute('aria-pressed',String(active));bindFavorites(document.querySelector('.purchase-card'))}
       enableSizeSelection(product);
       enableProductShipping(product,variant);
     }catch(error){console.warn('Produto usando conteúdo de apresentação.',error)}

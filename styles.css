@@ -50,6 +50,7 @@ html,body{max-width:100%;overflow-x:hidden}@media(min-width:641px){.hero-content
 @media(min-width:641px){.hero-slide>picture>img{left:auto;right:0;width:55%;height:100%;object-position:center 48%}}
 .product-photo>img{width:100%;height:100%;object-fit:cover}.catalog-empty{grid-column:1/-1;padding:32px 0;color:#77695e}.p1{background-image:url("assets/produto-brinco-aura.webp")}
 .product-grid{scrollbar-width:none;background:transparent}.product-grid::-webkit-scrollbar{display:none;width:0;height:0}.product-grid article,.product-grid a,.product-photo{background-color:#050505}
+.product-photo .favorite.active{background:#b6914a;color:#fff}
 .p2{background-image:url("assets/produto-anel-lumiere.webp")}
 .p3{background-image:url("assets/produto-colar-elise.webp")}
 .p4{background-image:url("assets/produto-pulseira-essencia.webp")}
