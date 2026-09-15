@@ -76,4 +76,4 @@ html,body{max-width:100%;overflow-x:hidden}@media(min-width:641px){.hero-content
 @media(max-width:640px){.announcement{height:34px;padding:0}.announcement-item{flex-direction:row;gap:24px;padding:0 24px;font-size:8px;letter-spacing:.025em}.announcement-item button,.announcement-item b{font-size:8px;padding:5px 11px}.header{top:34px}.mobile-menu-panel{top:102px;max-height:calc(100svh - 118px)}}
 @media(prefers-reduced-motion:reduce){.announcement-track{animation:none}.announcement-item:not(:first-child){display:none}}
 
-.account-link svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6}.account-link.logged-in{color:#7de2b4!important}
+.account-link svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6}.account-link.logged-in{border-color:#b6914a66!important;color:#d1b77f!important}
