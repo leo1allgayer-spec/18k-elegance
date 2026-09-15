@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css?v=20260910-02">
-  <link rel="stylesheet" href="store.css?v=20260915-address-summary">
+  <link rel="stylesheet" href="store.css?v=20260915-account-summary">
   <link rel="stylesheet" href="recovery.css?v=20260912-01">
 </head>
 <body class="account-page">
@@ -61,7 +61,7 @@
       <header class="account-welcome"><div><p class="eyebrow">MINHA ELEGANCE</p><h1>Olá, <span id="account-first-name"></span></h1></div><button type="button" id="account-logout">Sair</button></header>
       <div id="first-purchase-benefit" class="account-benefit" hidden><span>BENEFÍCIO DISPONÍVEL</span><strong>10% OFF na sua primeira compra</strong><p>O cupom PRIMEIRAELEGANCE será aplicado automaticamente no checkout.</p></div>
       <div class="account-grid">
-        <form id="profile-form" class="account-card"><h2>Meus dados</h2><label>Nome completo<input name="name" required></label><label>E-mail<input name="email" type="email" disabled></label><label>Celular<input name="phone"></label><label>Data de nascimento<input name="birth_date" type="date"></label><button class="outline-button" type="submit">Salvar dados</button></form>
+        <form id="profile-form" class="account-card"><h2>Meus dados</h2><div class="profile-summary" hidden><strong></strong><span></span><small></small><button class="outline-button account-profile-edit" type="button">Editar dados</button></div><div class="profile-fields"><label>Nome completo<input name="name" required></label><label>E-mail<input name="email" type="email" disabled></label><label>Celular<input name="phone"></label><label>Data de nascimento<input name="birth_date" type="date"></label><button class="outline-button" type="submit">Salvar dados</button><p class="profile-message account-message" aria-live="polite"></p></div></form>
         <form id="address-form" class="account-card"><h2>Endereço principal</h2><div class="address-summary" hidden><p></p><button class="outline-button account-address-edit" type="button">Editar endereço</button></div><div class="address-fields"><div class="address-grid"><label>CEP<input name="postal_code" autocomplete="postal-code" inputmode="numeric" required></label><label>Rua<input name="street" autocomplete="address-line1" required></label><label>Número<input name="number" autocomplete="address-line2" required></label><label>Complemento<input name="complement" autocomplete="address-line3"></label><label>Bairro<input name="neighborhood" required></label><label>Cidade<input name="city" autocomplete="address-level2" required></label><label>Estado<input name="state" autocomplete="address-level1" maxlength="2" required></label></div><button class="outline-button" type="submit">Salvar endereço</button><p class="address-message account-message" aria-live="polite"></p></div></form>
         <article class="account-card loyalty-summary"><h2>Clube fidelidade</h2><strong id="loyalty-count">0 compras</strong><p>A cada compra aprovada, seu progresso é atualizado automaticamente.</p><a href="fidelidade.html">Ver regras do clube →</a></article>
         <article class="account-card orders-card"><h2>Meus pedidos</h2><p><a href="cartao-presente.html#my-gifts">Meus cartões-presente →</a></p><div id="account-orders"></div></article>
@@ -69,6 +69,6 @@
       <p class="dashboard-message account-message" aria-live="polite"></p>
     </section>
   </main>
-  <script src="conta.js?v=20260915-address-summary"></script>
+  <script src="conta.js?v=20260915-account-summary"></script>
 </body>
 </html>
