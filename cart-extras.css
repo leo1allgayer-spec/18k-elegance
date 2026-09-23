@@ -8,4 +8,9 @@
 .cart-extra input { width:22px; height:22px; accent-color:#c8a459; }
 .cart-extras-actions { display:flex; flex-wrap:wrap; gap:12px; }
 .cart-extras button { cursor:pointer; }
+.extra-quantity { display:flex; align-items:center; grid-column:2 / -1; justify-self:start; border:1px solid #b89550; }
+.extra-quantity button { background:transparent; color:#d7b774; border:0; min-width:40px; min-height:44px; font-size:22px; }
+.extra-quantity button:disabled { opacity:.35; cursor:default; }
+.extra-quantity input { width:48px; min-height:44px; border:0; background:transparent; color:#fff; text-align:center; appearance:textfield; }
+.extra-quantity input::-webkit-inner-spin-button { appearance:none; }
 @media(max-width:480px) { .cart-extras { padding:16px; } .cart-extra { grid-template-columns:60px 1fr auto; gap:10px; } .cart-extra img { width:60px; height:85px; } .cart-extras-actions .button { width:100%; } }

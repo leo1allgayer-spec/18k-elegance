@@ -201,6 +201,7 @@ document.querySelector(".add-cart")?.addEventListener("click", (event) => {
   localStorage.removeItem("elegance-coupon");
   saveCart(cart);
   button.textContent = "Adicionado à sacola ✓";
+  document.dispatchEvent(new CustomEvent('elegance:cart-added'));
   setTimeout(() => { button.textContent = "Adicionar à sacola"; }, 1800);
 });
 

@@ -30,7 +30,7 @@
       const cart = getCart();
       available = results.filter(Boolean).map(product => ({ product, variant:product.variants.find(v => v.stock > cart.filter(i => Number(i.variant_id) === v.id).reduce((sum,i) => sum + Number(i.qty),0)) })).filter(item => item.variant);
       available.forEach(({ product, variant }, index) => {
-        const label = document.createElement('label');
+        const label = document.createElement('article');
         label.className = 'cart-extra';
         const img = document.createElement('img');
         img.src = product.images[0]?.url || '';
@@ -44,25 +44,39 @@
         price.textContent = money((variant.price_cents ?? product.price_cents)/100);
         text.append(title,description,price);
         const input = document.createElement('input');
-        input.type = 'checkbox'; input.value = String(index);
-        input.setAttribute('aria-label','Adicionar ' + product.name);
-        label.append(img,text,input); list.append(label);
+        const remaining = Math.max(0, variant.stock - cart.filter(i => Number(i.variant_id) === variant.id).reduce((sum,i) => sum + Number(i.qty),0));
+        input.type = 'number'; input.min = '0'; input.max = String(remaining); input.step = '1'; input.value = '0'; input.dataset.index = String(index);
+        input.setAttribute('aria-label','Quantidade de ' + product.name);
+        const controls = document.createElement('div'); controls.className = 'extra-quantity';
+        const minus = document.createElement('button'), plus = document.createElement('button');
+        minus.type = plus.type = 'button'; minus.textContent = '−'; plus.textContent = '+';
+        minus.setAttribute('aria-label','Diminuir quantidade de ' + product.name);
+        plus.setAttribute('aria-label','Aumentar quantidade de ' + product.name);
+        const update = value => { input.value = String(Math.max(0,Math.min(remaining,Math.floor(Number(value)||0)))); minus.disabled = Number(input.value)===0; plus.disabled = Number(input.value)>=remaining; };
+        minus.onclick = () => update(Number(input.value)-1); plus.onclick = () => update(Number(input.value)+1);
+        input.onchange = () => update(input.value); update(0);
+        controls.append(minus,input,plus);
+        const stock = document.createElement('small'); stock.textContent = `${remaining} disponível(is)`; text.append(stock);
+        label.append(img,text,controls); list.append(label);
       });
-      message.textContent = available.length ? 'Cada opção selecionada adiciona uma unidade.' : 'Não há extras disponíveis no momento. Você pode continuar para a entrega.';
+      message.textContent = available.length ? 'Escolha a quantidade de cada extra. Deixe zero para não adicionar.' : 'Não há extras disponíveis no momento. Você pode continuar para a entrega.';
       confirm.disabled = !available.length;
     } catch {
       message.textContent = 'Não foi possível carregar os extras. Você pode continuar para a entrega ou tentar novamente.';
     } finally { loading = false; }
   });
   confirm.onclick = () => {
-    const selected = [...list.querySelectorAll('input:checked')];
+    const selected = [...list.querySelectorAll('input[type="number"]')].filter(input => Number(input.value)>0);
     const cart = getCart();
     if (!cart.length) { dialog.close(); return; }
     selected.forEach(input => {
-      const {product,variant} = available[Number(input.value)];
+      const {product,variant} = available[Number(input.dataset.index)];
+      const already = cart.filter(item => Number(item.variant_id) === variant.id).reduce((sum,item) => sum+Number(item.qty),0);
+      const quantity = Math.max(0,Math.min(variant.stock-already,Math.floor(Number(input.value)||0)));
+      if (!quantity) return;
       const existing = cart.find(item => Number(item.variant_id) === variant.id);
-      if (existing) existing.qty = Number(existing.qty) + 1;
-      else cart.push({product_id:product.id,variant_id:variant.id,name:product.name,price:(variant.price_cents ?? product.price_cents)/100,image:product.images[0]?.url || '',qty:1,personalization:null});
+      if (existing) existing.qty = Number(existing.qty) + quantity;
+      else cart.push({product_id:product.id,variant_id:variant.id,name:product.name,price:(variant.price_cents ?? product.price_cents)/100,image:product.images[0]?.url || '',qty:quantity,personalization:null});
     });
     if (selected.length) { localStorage.removeItem('elegance-coupon'); saveCart(cart); }
     location.assign('checkout.html');
