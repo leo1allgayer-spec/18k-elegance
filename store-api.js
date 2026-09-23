@@ -43,6 +43,7 @@
   function enableSizeSelection(product){
     const purchase=document.querySelector('.purchase-card'),add=document.querySelector('.add-cart');
     if(!purchase||!add||product.category_slug!=='linha-masculina')return;
+    if(String(product.sku||'').startsWith('E18-20260923-')&&!product.piece_length)return;
     const bracelet=/pulseira/i.test(product.name),sizes=bracelet?['20 cm','21 cm','22 cm']:['60 cm','70 cm'];
     const selector=document.createElement('div');selector.className='size-selector';
     selector.innerHTML=`<b>${bracelet?'Tamanho da pulseira':'Tamanho da corrente'}</b><div class="size-options" role="group" aria-label="Escolha o tamanho">${sizes.map((size,index)=>`<button type="button" class="size-option${index?'':' active'}" data-size="${esc(size)}" aria-pressed="${index?'false':'true'}">${esc(size)}</button>`).join('')}</div>`;

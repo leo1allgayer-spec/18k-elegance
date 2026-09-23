@@ -1,0 +1,18 @@
+{
+  "status": "published",
+  "stock": 1,
+  "name": "Corrente Cartier Abaulada 3mm Fecho Canhão + Pingente Cruz Vazada Amarrada",
+  "slug": "corrente-cartier-abaulada-3mm-cruz-vazada-amarrada",
+  "price_cents": 19900,
+  "description": "Conjunto composto por corrente Cartier Abaulada 3mm com fecho canhão e pingente Cruz Vazada Amarrada, banhados a Ouro 18K. Detalhes delicados e um significado especial.\n\nDetalhes da peça\n• Semijoia banhada a Ouro 18K\n• Corrente: Cartier Abaulada 3mm com fecho canhão\n• Peso da corrente: 7g\n• Pingente: Cruz Vazada Amarrada\n• Peso do pingente: 1g\n• Medidas do pingente: 2,8 cm de altura x 1,5 cm de largura + contra argola\n• Matéria-prima: Latão (liga metálica de cobre e zinco)\n• Acabamento em verniz cataforético, que proporciona maior durabilidade e qualidade à semijoia\n\nGarantia Elegance 18K\nTodas as nossas peças possuem 1 ano de garantia no banho de Ouro 18K, referente à fabricação própria.",
+  "images": [
+    "/assets/corrente-cartier-cruz-vazada-amarrada-1.jpg",
+    "/assets/corrente-cartier-cruz-vazada-amarrada-2.jpg"
+  ],
+  "material": "Latão (liga metálica de cobre e zinco)",
+  "coating": "Ouro 18K",
+  "warranty_months": 12,
+  "chain_weight_grams": 7,
+  "pendant_weight_grams": 1,
+  "pending": ["Comprimentos disponíveis da corrente", "Estoque por comprimento", "Peso total embalado e dimensões para frete"]
+}
