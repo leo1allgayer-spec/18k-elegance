@@ -259,7 +259,9 @@ async function adminOrderDetail(env: Env, id: number): Promise<Response> {
 
 async function adminCustomers(env: Env): Promise<Response> {
   const result = await env.DB.prepare(`SELECT c.id, c.name, c.email, c.phone, c.birth_date, c.active, c.created_at,
-    COUNT(o.id) AS order_count, COALESCE(SUM(o.total_cents), 0) AS total_spent_cents
+    COUNT(o.id) AS order_count,
+    COALESCE(SUM(CASE WHEN o.status IN ('paid','preparing','shipped','delivered') THEN o.total_cents ELSE 0 END), 0) AS total_spent_cents,
+    COALESCE(SUM(CASE WHEN o.status = 'pending_payment' THEN o.total_cents ELSE 0 END), 0) AS total_pending_cents
     FROM customers c LEFT JOIN orders o ON o.customer_id = c.id
     GROUP BY c.id ORDER BY c.created_at DESC LIMIT 200`).all();
   return json({ ok: true, customers: result.results });
