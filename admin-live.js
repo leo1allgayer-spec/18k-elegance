@@ -77,4 +77,30 @@ function render(view){state.view=view;const [heading,subtitle]=titles[view];$('#
 $('#admin-nav').onclick=event=>{const button=event.target.closest('[data-view]');if(button){render(button.dataset.view);$('#sidebar').classList.remove('open')}};$('#modal-close').onclick=$('#modal-cancel').onclick=closeModal;$('#modal-form').onsubmit=submitModal;$('#open-menu').onclick=()=>$('#sidebar').classList.add('open');$('#close-menu').onclick=()=>$('#sidebar').classList.remove('open');
 $('.sidebar-user a').onclick=async event=>{event.preventDefault();await api('auth/logout',{method:'POST'}).catch(()=>{});location.replace('/admin')};
 $('#global-search').onkeydown=event=>{if(event.key==='Enter'){render('products');const input=$('.list-search');if(input){input.value=event.currentTarget.value;input.dispatchEvent(new Event('input'))}}};
-(async()=>{try{const me=await api('auth/me');if(me.customer.role!=='admin')throw new Error('Acesso restrito');$('.sidebar-user strong').textContent=me.customer.name;await loadAll();const result=new URLSearchParams(location.search).get('bling');render(result?'settings':'dashboard');if(result){history.replaceState({},'',location.pathname);toast(result==='connected'?'Bling conectado com sucesso.':'Não foi possível conectar o Bling.',result!=='connected')}}catch(error){location.replace('/admin?erro=acesso')}})();
+async function initializeAdmin(){
+  let me;
+  try {
+    me=await api('auth/me');
+    if(me.customer?.role!=='admin'){location.replace('/admin?erro=acesso');return}
+  } catch(error) {
+    if(error.status===401||error.status===403){location.replace('/admin?erro=acesso');return}
+    showAdminLoadError();return;
+  }
+  $('.sidebar-user strong').textContent=me.customer.name;
+  try {
+    await loadAll();
+    const result=new URLSearchParams(location.search).get('bling');
+    render(result?'settings':'dashboard');
+    if(result){history.replaceState({},'',location.pathname);toast(result==='connected'?'Bling conectado com sucesso.':'Não foi possível conectar o Bling.',result!=='connected')}
+  } catch(error) {
+    console.error('Falha ao carregar painel',error);
+    showAdminLoadError();
+  }
+}
+function showAdminLoadError(){
+  $('#page-title').textContent='Painel administrativo';
+  $('#page-subtitle').textContent='Não foi possível carregar todos os dados agora.';
+  $('#page-content').innerHTML='<article class="card"><p>Sua sessão foi mantida. Tente carregar o painel novamente.</p><button type="button" class="btn primary" id="retry-admin">Tentar novamente</button></article>';
+  $('#retry-admin').onclick=()=>{ $('#retry-admin').disabled=true; initializeAdmin(); };
+}
+initializeAdmin();
