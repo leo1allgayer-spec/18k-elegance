@@ -257,6 +257,24 @@ async function adminOrderDetail(env: Env, id: number): Promise<Response> {
   return json({ ok: true, order, items: items.results });
 }
 
+async function updateAdminCustomer(request: Request, env: Env, id: number): Promise<Response> {
+  const body = await readJson<{ name?: string; email?: string; phone?: string; birth_date?: string }>(request);
+  const name = String(body.name || '').trim();
+  const email = normalizeEmail(String(body.email || ''));
+  const phone = String(body.phone || '').trim();
+  const birth = String(body.birth_date || '').trim();
+  if (!name || name.length > 160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) return apiError('Informe nome e e-mail válidos.');
+  if (phone && !normalizeBrazilPhone(phone)) return apiError('Informe um celular válido com DDD.');
+  const date = new Date(birth + 'T12:00:00Z');
+  if (birth && (!/^\d{4}-\d{2}-\d{2}$/.test(birth) || !Number.isFinite(date.getTime()) || date.toISOString().slice(0,10) !== birth || birth > new Date().toISOString().slice(0,10))) return apiError('Informe uma data de nascimento válida.');
+  const customer = await env.DB.prepare('SELECT id FROM customers WHERE id=?').bind(id).first();
+  if (!customer) return apiError('Cliente não encontrado.',404,'NOT_FOUND');
+  const duplicate = await env.DB.prepare('SELECT id FROM customers WHERE lower(email)=? AND id<>?').bind(email,id).first();
+  if (duplicate) return apiError('Este e-mail já está em outro cadastro.',409,'EMAIL_EXISTS');
+  await env.DB.prepare('UPDATE customers SET name=?,email=?,phone=?,birth_date=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').bind(name,email,phone || null,birth || null,id).run();
+  return json({ok:true});
+}
+
 async function adminCustomers(env: Env): Promise<Response> {
   const result = await env.DB.prepare(`SELECT c.id, c.name, c.email, c.phone, c.birth_date, c.active, c.created_at,
     COUNT(o.id) AS order_count,
@@ -569,6 +587,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (method === "GET" && parts[1] === "orders") return adminOrders(env);
     if (method === "PATCH" && parts[1] === "orders" && parts[2]) return updateOrder(request, env, integer(parts[2]));
     if (method === "GET" && parts[1] === "customers") return adminCustomers(env);
+    if (method === "PUT" && parts[1] === "customers" && parts.length === 3) return updateAdminCustomer(request, env, integer(parts[2]));
     if (method === "GET" && parts[1] === "coupons") return adminCoupons(env);
     if (method === "POST" && parts[1] === "coupons") return saveCoupon(request, env);
   }
