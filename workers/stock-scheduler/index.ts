@@ -9,7 +9,7 @@ export default {
     // Only this fixed same-project URL is called. HMAC never exposes the secret.
     const response = await fetch("https://elegance18k.com/api/integrations/bling-stock-tick", {
       method: "POST", headers: { "X-Stock-Time": timestamp, "X-Stock-Signature": await signStockTick(control.secret, timestamp) },
-      signal: AbortSignal.timeout(115000), redirect: "error",
+      signal: AbortSignal.timeout(115000), redirect: "manual",
     });
     await response.body?.cancel();
     if (!response.ok) throw new Error(`Stock synchronization HTTP ${response.status}; see admin settings.`);

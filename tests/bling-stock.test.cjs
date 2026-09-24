@@ -9,6 +9,7 @@ require.extensions['.ts'] = (module, filename) => module._compile(transformSync(
 const {stockDecision,inventoryNumber} = require('../functions/_lib/stock-decision.ts');
 const {signStockTick,verifyStockTick} = require('../functions/_lib/stock-signature.ts');
 const {stockSchema,runStockSync} = require('../functions/_lib/bling-stock.ts');
+const scheduler = require('../workers/stock-scheduler/index.ts').default;
 
 function fixture() {
   const db = new DatabaseSync(':memory:');
@@ -45,6 +46,16 @@ test('scheduler accepts only valid recent signatures',async()=>{
   assert.equal(await verifyStockTick('other-key',timestamp,sig),false);
   assert.equal(await verifyStockTick('test-key',String(Date.now()-120000),sig),false);
   assert.equal(await verifyStockTick('test-key',timestamp,'bad'),false);
+});
+test('scheduler signs the fixed endpoint and never follows redirects',async()=>{
+  const original=global.fetch;const env={DB:{prepare:()=>({first:async()=>({secret:'test-key'})})}};
+  global.fetch=async(url,options)=>{
+    assert.equal(url,'https://elegance18k.com/api/integrations/bling-stock-tick');
+    assert.equal(options.redirect,'manual');assert.equal(options.method,'POST');
+    assert.equal(await verifyStockTick('test-key',options.headers['X-Stock-Time'],options.headers['X-Stock-Signature']),true);
+    return Response.redirect('https://example.invalid/',302);
+  };
+  try{await assert.rejects(()=>scheduler.scheduled({},env),/HTTP 302/);}finally{global.fetch=original;}
 });
 test('initial site balance, reservation preservation, echo dedupe, inbound change and sale',async()=>{
   const {db,env}=fixture(); await stockSchema(env);
