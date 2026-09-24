@@ -3,10 +3,12 @@
   "private": true,
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "test:stock": "node --test tests/bling-stock.test.cjs",
     "dev": "wrangler pages dev ."
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",
+    "esbuild": "^0.28.1",
     "typescript": "latest",
     "wrangler": "latest"
   }

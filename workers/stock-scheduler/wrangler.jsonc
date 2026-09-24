@@ -1,0 +1,11 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "elegance-stock-scheduler",
+  "main": "index.ts",
+  "compatibility_date": "2026-09-24",
+  "workers_dev": false,
+  "preview_urls": false,
+  "triggers": { "crons": ["* * * * *"] },
+  "observability": { "enabled": true },
+  "d1_databases": [{ "binding": "DB", "database_name": "elegance-18k", "database_id": "75219293-ded1-45e2-8e25-9cf424f4db87" }]
+}

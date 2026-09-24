@@ -3,7 +3,7 @@ import { apiError, json, normalizeEmail, readJson } from "../_lib/http";
 import { clearSessionCookie, createSession, currentCustomer, deleteCurrentSession, hashPassword, sessionCookie, sha256, verifyPassword } from "../_lib/auth";
 import { createMercadoPagoCheckout, mercadoPagoDiagnostic, mercadoPagoWebhook, publicPaymentStatus, validateCartCoupon } from "../_lib/mercado-pago";
 import { correiosConfigured, publicCorreiosQuote } from "../_lib/correios";
-import { blingCallback, blingConnect, blingStatus, disconnectBling } from "../_lib/bling";
+import { blingCallback, blingConnect, blingStatus, blingDiagnostics, disconnectBling } from "../_lib/bling";
 import { adminPersonalizationImage, publicProductImage, uploadPersonalization, uploadProductImage } from "../_lib/personalization";
 import { normalizeBrazilPhone, sendWhatsAppMessage, whatsappConfigured } from "../_lib/whatsapp";
 
@@ -573,6 +573,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (method === "GET" && parts[1] === "dashboard") return adminDashboard(env);
     if (method === "GET" && parts.join("/") === "admin/integrations/bling/connect") return blingConnect(request, env, admin);
     if (method === "GET" && parts.join("/") === "admin/integrations/bling/status") return blingStatus(env);
+    if (method === "POST" && parts.join("/") === "admin/integrations/bling/diagnostics") return blingDiagnostics(env);
     if (method === "DELETE" && parts.join("/") === "admin/integrations/bling") return disconnectBling(env);
     if (method === "GET" && parts[1] === "products") return adminProducts(env);
     if (method === "POST" && parts[1] === "products" && !parts[2]) return saveProduct(request, env);

@@ -52,6 +52,7 @@ async function exchange(env: Env, body: URLSearchParams): Promise<BlingToken> {
       "Accept": "application/json",
     },
     body,
+    signal: AbortSignal.timeout(15000),
   });
   const data: Partial<BlingToken> & { error?: string; error_description?: string } = await response
     .json<Partial<BlingToken> & { error?: string; error_description?: string }>().catch(() => ({}));
@@ -115,6 +116,33 @@ export async function disconnectBling(env: Env): Promise<Response> {
   await ensureTables(env);
   await env.DB.prepare("DELETE FROM bling_tokens WHERE id=1").run();
   return json({ ok: true });
+}
+
+/** Read-only check: OAuth being stored does not prove API access still works. */
+export async function blingDiagnostics(env: Env): Promise<Response> {
+  if (!configured(env)) return apiError("Configure as credenciais do Bling.", 503, "BLING_NOT_CONFIGURED");
+  let token: string;
+  try {
+    token = await blingAccessToken(env);
+  } catch {
+    return json({ ok: true, available: false, reconnect_required: true,
+      message: "A autorização do Bling não pôde ser renovada. Reconecte a conta para continuar." });
+  }
+  const checks: { resource: string; status: number; data: unknown }[] = [];
+  for (const [resource, path] of [["products", "/produtos?limite=100&pagina=1"], ["deposits", "/depositos?limite=100&pagina=1"]]) {
+    try {
+      const response = await fetch(`https://api.bling.com.br/Api/v3${path}`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+        signal: AbortSignal.timeout(15000),
+      });
+      const body = await response.json<{ data?: unknown }>().catch(() => ({} as { data?: unknown }));
+      checks.push({ resource, status: response.status, data: response.ok ? body.data ?? [] : null });
+    } catch {
+      checks.push({ resource, status: 503, data: null });
+    }
+  }
+  return json({ ok: true, available: checks.every(check => check.status === 200),
+    reconnect_required: checks.some(check => check.status === 401), checks });
 }
 
 export async function blingAccessToken(env: Env): Promise<string> {
