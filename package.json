@@ -4,6 +4,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test:stock": "node --test tests/bling-stock.test.cjs",
+    "test:security": "node --test tests/checkout-security.test.cjs",
     "dev": "wrangler pages dev ."
   },
   "devDependencies": {

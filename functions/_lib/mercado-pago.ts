@@ -3,6 +3,7 @@ import { apiError, json, normalizeEmail, readJson } from "./http";
 import { currentCustomer, hashPassword } from "./auth";
 import { calculateCorreiosQuotes } from "./correios";
 import { giftCardBalance, syncGiftPayment } from "./gift-cards";
+import { reservationStatements, releaseCheckout, finalizeOrder } from './checkout-stock';
 
 type CheckoutItem = { product_id?: number; variant_id?: number; quantity?: number; personalization?: { engraving_text?: string; image_upload_id?: string; image_name?: string; size?: string } };
 type CheckoutBody = {
@@ -42,6 +43,7 @@ async function mercadoPago<T>(env: Env, path: string, init: RequestInit = {}): P
   if (!env.MERCADO_PAGO_ACCESS_TOKEN) throw new Error("MERCADO_PAGO_NOT_CONFIGURED");
   const response = await fetch(`https://api.mercadopago.com${path}`, {
     ...init,
+    signal: AbortSignal.timeout(15000),
     headers: {
       Authorization: `Bearer ${env.MERCADO_PAGO_ACCESS_TOKEN}`,
       "Content-Type": "application/json",
@@ -60,8 +62,6 @@ async function customerId(env: Env, customer: NonNullable<CheckoutBody["customer
   const email = normalizeEmail(customer.email || "");
   const existing = await env.DB.prepare("SELECT id FROM customers WHERE email = ? AND active = 1").bind(email).first<{ id: number }>();
   if (existing) {
-    await env.DB.prepare("UPDATE customers SET name=?, phone=?, updated_at=CURRENT_TIMESTAMP WHERE id=?")
-      .bind(customer.name!.trim(), customer.phone?.trim() || null, existing.id).run();
     return existing.id;
   }
   const temporaryCredentials = await hashPassword(crypto.randomUUID());
@@ -225,7 +225,8 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
   }
   const total = subtotal - discount.cents + shippingCents;
   if (total < 1) return apiError("O total do pedido é inválido.");
-  const orderNumber = `ELG-${Date.now().toString(36).toUpperCase()}-${crypto.randomUUID().slice(0, 5).toUpperCase()}`;
+  const orderNumber = `ELG-${crypto.randomUUID().replaceAll('-','').toUpperCase()}`;
+  const expiresAt = new Date(Date.now()+30*60*1000).toISOString();
   const address = shippingMethod === "pickup" ? null : JSON.stringify(body.shipping || {});
   const orderResult = await env.DB.prepare(`INSERT INTO orders(order_number,customer_id,status,subtotal_cents,discount_cents,shipping_cents,total_cents,shipping_method,shipping_address_json,coupon_id)
     VALUES(?,?,'pending_payment',?,?,?,?,?,?,?)`).bind(orderNumber, id, subtotal, discount.cents, shippingCents, total, shippingMethod, address, discount.couponId).run();
@@ -250,25 +251,31 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
     }
   }
   const payable = total - giftCents;
-  await env.DB.batch([
+  try { await env.DB.batch([
+    env.DB.prepare('INSERT INTO checkout_security(order_id,expires_at) VALUES(?,?)').bind(orderId,expiresAt),
+    ...reservationStatements(env,orderId,products),
     ...products.map(item => env.DB.prepare(`INSERT INTO order_items(order_id,product_id,variant_id,product_name,sku,unit_price_cents,quantity,personalization_json,personalization_fee_cents)
       VALUES(?,?,?,?,?,?,?,?,?)`).bind(orderId, item.product_id, item.variant_id, item.name, item.sku, item.unit_price_cents, item.stock, item.personalization_json, item.personalization_fee_cents)),
     ...products.filter(item => item.image_upload_id).map(item => env.DB.prepare("UPDATE personalization_uploads SET order_id=? WHERE id=? AND order_id IS NULL").bind(orderId, item.image_upload_id)),
     env.DB.prepare("INSERT INTO payments(order_id,provider,status,amount_cents) VALUES(?,?,'pending',?)").bind(orderId, payable ? "mercado_pago" : "gift_card", payable),
-  ]);
+  ]); } catch (error) {
+    await releaseCheckout(env,orderId);
+    if (String(error).includes('OUT_OF_STOCK')) return apiError('Um produto acabou de ficar indisponível. Atualize a sacola.',409,'OUT_OF_STOCK');
+    throw error;
+  }
   const origin = new URL(request.url).origin;
   if (!payable) {
     await env.DB.batch([
-      env.DB.prepare("UPDATE orders SET status='paid' WHERE id=?").bind(orderId),
+      env.DB.prepare('INSERT OR IGNORE INTO finalized_orders(order_id) VALUES(?)').bind(orderId),
       env.DB.prepare("UPDATE payments SET status='approved' WHERE order_id=?").bind(orderId),
       env.DB.prepare("UPDATE gift_card_uses SET status='spent' WHERE order_id=?").bind(orderId),
-      ...products.map(item=>env.DB.prepare("UPDATE product_variants SET stock=MAX(0,stock-?),updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(item.stock,item.variant_id)),
-      env.DB.prepare("UPDATE loyalty_accounts SET purchase_count=purchase_count+1 WHERE customer_id=?").bind(id),
-      ...(discount.couponId?[env.DB.prepare("UPDATE coupons SET uses=uses+1 WHERE id=?").bind(discount.couponId)]:[])
     ]);
     return json({ok:true,order_number:orderNumber,checkout_url:origin+"/pagamento-retorno.html?status=success&pedido="+encodeURIComponent(orderNumber)},201);
   }
   const preferenceBody = {
+    expires: true,
+    expiration_date_from: new Date().toISOString(),
+    expiration_date_to: expiresAt,
     items: [{
       id: orderNumber,
       title: discount.cents ? "Pedido Elegance 18K (" + discount.code + ")" : "Pedido Elegance 18K",
@@ -302,6 +309,7 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
     if(giftCents)await env.DB.prepare("UPDATE orders SET gift_checkout_url=? WHERE id=?").bind(checkoutUrl,orderId).run();
     return json({ ok: true, order_number: orderNumber, checkout_url: checkoutUrl }, 201);
   } catch (error) {
+    if (/^MERCADO_PAGO_4\d\d$/.test(error instanceof Error ? error.message : '')) await releaseCheckout(env,orderId);
     await env.DB.batch([
       // Só libera quando o provedor recusou a criação; timeout pode ter criado a preferência.
       ...(/^MERCADO_PAGO_4\d\d$/.test(error instanceof Error?error.message:"")?[env.DB.prepare("UPDATE gift_card_uses SET status='released' WHERE order_id=? AND status='reserved'").bind(orderId)]:[]),
@@ -335,10 +343,14 @@ export async function mercadoPagoWebhook(request: Request, env: Env): Promise<Re
   const dataId = String(url.searchParams.get("data.id") || body.data?.id || "");
   const type = url.searchParams.get("type") || body.type || "";
   if (type !== "payment" || !/^\d+$/.test(dataId)) return json({ ok: true, ignored: true });
-  if (env.MERCADO_PAGO_WEBHOOK_SECRET && !(await validWebhookSignature(request, env.MERCADO_PAGO_WEBHOOK_SECRET, dataId))) {
+  if (!env.MERCADO_PAGO_WEBHOOK_SECRET || !(await validWebhookSignature(request, env.MERCADO_PAGO_WEBHOOK_SECRET, dataId))) {
     return apiError("Assinatura inválida.", 401, "INVALID_SIGNATURE");
   }
   const payment = await mercadoPago<MercadoPagoPayment>(env, `/v1/payments/${dataId}`);
+  return applyMercadoPagoPayment(env,payment);
+}
+
+export async function applyMercadoPagoPayment(env: Env, payment: MercadoPagoPayment): Promise<Response> {
   if (await syncGiftPayment(env,payment)) return json({ok:true});
   const order = await env.DB.prepare("SELECT id,status,total_cents,gift_card_cents,customer_id,coupon_id FROM orders WHERE order_number=?")
     .bind(payment.external_reference || "").first<{ id: number; status: string; total_cents: number; gift_card_cents:number; customer_id: number; coupon_id: number | null }>();
@@ -348,15 +360,11 @@ export async function mercadoPagoWebhook(request: Request, env: Env): Promise<Re
   await env.DB.prepare("UPDATE payments SET provider_payment_id=?,status=?,raw_status=?,updated_at=CURRENT_TIMESTAMP WHERE order_id=?")
     .bind(String(payment.id), paymentStatus, payment.status, order.id).run();
   if (mapped === "paid" && !["paid","preparing","shipped","delivered","refunded"].includes(order.status)) {
-    const changed = await env.DB.prepare("UPDATE orders SET status='paid',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('pending_payment','cancelled')").bind(order.id).run();
-    if (changed.meta.changes) {
-      const items = await env.DB.prepare("SELECT variant_id,quantity FROM order_items WHERE order_id=? AND variant_id IS NOT NULL").bind(order.id).all<{ variant_id: number; quantity: number }>();
-      await env.DB.batch([
-        env.DB.prepare("UPDATE gift_card_uses SET status='spent' WHERE order_id=? AND status='reserved'").bind(order.id),
-        ...items.results.map(item => env.DB.prepare("UPDATE product_variants SET stock=MAX(0,stock-?),updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(item.quantity, item.variant_id)),
-        env.DB.prepare("UPDATE loyalty_accounts SET purchase_count=purchase_count+1,updated_at=CURRENT_TIMESTAMP WHERE customer_id=?").bind(order.customer_id),
-        ...(order.coupon_id ? [env.DB.prepare("UPDATE coupons SET uses=uses+1 WHERE id=?").bind(order.coupon_id)] : []),
-      ]);
+    try { await finalizeOrder(env,order.id); }
+    catch(error) {
+      if (!/OUT_OF_STOCK|RESERVATION_RELEASED/.test(String(error))) throw error;
+      await env.DB.prepare("UPDATE orders SET status='payment_review',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status NOT IN ('paid','preparing','shipped','delivered','refunded')").bind(order.id).run();
+      return json({ok:true,review_required:true});
     }
   } else if (mapped === "refunded") {
     await env.DB.batch([
@@ -376,6 +384,31 @@ export async function publicPaymentStatus(request: Request, env: Env): Promise<R
   const order = await env.DB.prepare(`SELECT order_number,status,total_cents,shipping_method,tracking_code,created_at
     FROM orders WHERE order_number=?`).bind(orderNumber).first();
   return order ? json({ ok: true, order }) : apiError("Pedido não encontrado.", 404, "NOT_FOUND");
+}
+
+export async function reconcileExpiredCheckout(env: Env): Promise<void> {
+  await env.DB.prepare('DELETE FROM request_limits WHERE expires_at < ?').bind(Math.floor(Date.now()/1000)).run();
+  if (!env.MERCADO_PAGO_ACCESS_TOKEN) return;
+  const order = await env.DB.prepare(`SELECT o.id,o.order_number,p.provider_order_id FROM checkout_security s
+    JOIN orders o ON o.id=s.order_id JOIN payments p ON p.order_id=o.id
+    WHERE datetime(s.expires_at)<datetime('now','-1 hour') AND p.provider='mercado_pago'
+      AND o.status IN ('pending_payment','cancelled')
+      AND (s.checked_at IS NULL OR s.checked_at<datetime('now','-10 minutes'))
+      AND EXISTS(SELECT 1 FROM stock_reservations r WHERE r.order_id=o.id AND r.status='held')
+    ORDER BY COALESCE(s.checked_at,'') LIMIT 1`).first<{id:number;order_number:string;provider_order_id:string|null}>();
+  if (!order) return;
+  await env.DB.prepare('UPDATE checkout_security SET checked_at=CURRENT_TIMESTAMP WHERE order_id=?').bind(order.id).run();
+  // Unknown preference creation outcomes retain reservations for manual review.
+  if (!order.provider_order_id) return;
+  const pref = await mercadoPago<{expires:boolean;expiration_date_to:string}>(env,`/checkout/preferences/${encodeURIComponent(order.provider_order_id)}`);
+  if (!pref.expires || !Number.isFinite(Date.parse(pref.expiration_date_to)) || Date.parse(pref.expiration_date_to)>Date.now()-3600000) return;
+  const found = await mercadoPago<{results:MercadoPagoPayment[];paging:{total:number}}>(env,
+    `/v1/payments/search?external_reference=${encodeURIComponent(order.order_number)}&limit=100`);
+  if (!Array.isArray(found.results) || !found.paging || found.paging.total!==found.results.length) return;
+  const approved = found.results.filter(p=>p.status==='approved');
+  if (approved.length) { for (const payment of approved) await applyMercadoPagoPayment(env,payment); return; }
+  if (found.results.some(p=>!['rejected','cancelled'].includes(p.status))) return;
+  await releaseCheckout(env,order.id);
 }
 
 export async function mercadoPagoDiagnostic(env: Env): Promise<Response> {

@@ -234,6 +234,10 @@ async function updateOrder(request: Request, env: Env, id: number): Promise<Resp
   const body = await readJson<{ status?: string; tracking_code?: string | null }>(request);
   const statuses = ["pending_payment","paid","preparing","shipped","delivered","cancelled","refunded"];
   if (!body.status || !statuses.includes(body.status)) return apiError("Status do pedido inválido.");
+  const secured = await env.DB.prepare('SELECT status FROM orders WHERE id=?').bind(id).first<{status:string}>();
+  if (secured && !['paid','preparing','shipped','delivered','refunded'].includes(secured.status) && ['paid','preparing','shipped','delivered'].includes(body.status)) {
+    return apiError('O pagamento precisa ser confirmado antes de liberar a preparação ou entrega.',409);
+  }
   const result = await env.DB.prepare("UPDATE orders SET status=?,tracking_code=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
     .bind(body.status, body.tracking_code?.trim() || null, id).run();
   return result.meta.changes ? json({ ok: true }) : apiError("Pedido não encontrado.", 404, "NOT_FOUND");
@@ -345,12 +349,8 @@ async function register(request: Request, env: Env): Promise<Response> {
   const existing = await env.DB.prepare("SELECT id,account_claimed FROM customers WHERE email = ?").bind(email).first<{ id: number; account_claimed: number }>();
   const credentials = await hashPassword(password);
   let customerId: number;
-  if (existing?.account_claimed) return apiError("Já existe uma conta com este e-mail.", 409, "EMAIL_EXISTS");
-  if (existing) {
-    customerId = existing.id;
-    await env.DB.prepare("UPDATE customers SET name=?,phone=?,birth_date=?,password_hash=?,password_salt=?,account_claimed=1,active=1,updated_at=CURRENT_TIMESTAMP WHERE id=?")
-      .bind(name, body.phone?.trim() || null, body.birth_date || null, credentials.hash, credentials.salt, customerId).run();
-  } else {
+  if (existing) return apiError("Este e-mail já possui cadastro. Entre na conta ou use a recuperação de senha pelo celular cadastrado.", 409, "EMAIL_EXISTS");
+  {
     const result = await env.DB.prepare(`INSERT INTO customers(name,email,phone,birth_date,password_hash,password_salt,account_claimed)
       VALUES(?,?,?,?,?,?,1)`).bind(name, email, body.phone?.trim() || null, body.birth_date || null, credentials.hash, credentials.salt).run();
     customerId = Number(result.meta.last_row_id);
@@ -416,7 +416,7 @@ async function forgotPassword(request: Request, env: Env): Promise<Response> {
   if (!phone) return apiError("Informe um celular válido com DDD.");
   const localPhone = phone.slice(2);
   const customer = await env.DB.prepare(`SELECT id, name FROM customers
-    WHERE active=1 AND account_claimed=1 AND
+    WHERE active=1 AND role='customer' AND
     REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone,'(',''),')',''),'-',''),' ',''),'+','') IN (?,?)
     LIMIT 1`).bind(phone, localPhone).first<{ id: number; name: string }>();
   const genericMessage = "Se esse celular estiver cadastrado, enviaremos as instruções pelo WhatsApp.";
@@ -457,7 +457,7 @@ async function resetPassword(request: Request, env: Env): Promise<Response> {
     WHERE id=? AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP`).bind(record.id).run();
   if (!claimed.meta.changes) return apiError("Este link expirou ou já foi utilizado.", 400, "INVALID_TOKEN");
   await env.DB.batch([
-    env.DB.prepare("UPDATE customers SET password_hash=?,password_salt=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+    env.DB.prepare("UPDATE customers SET password_hash=?,password_salt=?,account_claimed=1,updated_at=CURRENT_TIMESTAMP WHERE id=?")
       .bind(credentials.hash, credentials.salt, record.customer_id),
     env.DB.prepare("DELETE FROM sessions WHERE customer_id=?").bind(record.customer_id),
   ]);

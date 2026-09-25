@@ -61,7 +61,7 @@ export async function currentCustomer(request: Request, env: Env): Promise<Sessi
   const tokenHash = await sha256(token);
   return env.DB.prepare(`SELECT c.id, c.name, c.email, c.phone, c.birth_date, c.role
     FROM sessions s JOIN customers c ON c.id = s.customer_id
-    WHERE s.token_hash = ? AND s.expires_at > CURRENT_TIMESTAMP AND c.active = 1`)
+    WHERE s.token_hash = ? AND datetime(s.expires_at) > CURRENT_TIMESTAMP AND c.active = 1`)
     .bind(tokenHash).first<SessionCustomer>();
 }
 

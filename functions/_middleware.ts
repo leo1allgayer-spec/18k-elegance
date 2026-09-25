@@ -1,4 +1,5 @@
 import type { Env } from "./_lib/types";
+import { protectRequest } from "./_lib/request-security";
 
 const LEGACY_HOST = "site-18-kelegance.pages.dev";
 const PRIMARY_ORIGIN = "https://elegance18k.com";
@@ -226,6 +227,12 @@ class AppendSeo {
 
 export const onRequest: PagesFunction<Env> = async (context) => {
   const url = new URL(context.request.url);
+  try {
+    const blocked = await protectRequest(context.request, context.env);
+    if (blocked) return blocked;
+  } catch {
+    return Response.json({ok:false,error:{message:'Não foi possível validar a solicitação. Tente novamente.'}},{status:503,headers:{'Cache-Control':'no-store'}});
+  }
   if (url.hostname === LEGACY_HOST && !url.pathname.startsWith("/api/")) {
     const destination = new URL(url.pathname + url.search, PRIMARY_ORIGIN);
     return Response.redirect(destination.toString(), 308);
