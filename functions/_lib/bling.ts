@@ -45,6 +45,7 @@ function basicCredentials(env: Env): string {
 
 async function exchange(env: Env, body: URLSearchParams): Promise<BlingToken> {
   const response = await fetch(TOKEN_URL, {
+    redirect: 'error',
     method: "POST",
     headers: {
       "Authorization": `Basic ${basicCredentials(env)}`,
@@ -132,6 +133,7 @@ export async function blingDiagnostics(env: Env): Promise<Response> {
   for (const [resource, path] of [["products", "/produtos?limite=100&pagina=1"], ["deposits", "/depositos?limite=100&pagina=1"]]) {
     try {
       const response = await fetch(`https://api.bling.com.br/Api/v3${path}`, {
+        redirect: 'error',
         headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
         signal: AbortSignal.timeout(15000),
       });

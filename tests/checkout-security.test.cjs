@@ -9,9 +9,14 @@ const {reservationStatements,releaseCheckout,finalizeOrder}=require('../function
 const {protectRequest}=require('../functions/_lib/request-security.ts');
 const {onRequest}=require('../functions/api/[[path]].ts');
 const {createSession,sha256,currentCustomer}=require('../functions/_lib/auth.ts');
+const {hashPassword,verifyPassword,upgradePassword}=require('../functions/_lib/auth.ts');
+const {publicPaymentStatus}=require('../functions/_lib/mercado-pago.ts');
+const {validImage,imageForm}=require('../functions/_lib/image-validation.ts');
+const {securityHeaders,privatePath}=require('../functions/_lib/security-headers.ts');
+const {readBoundedBody}=require('../functions/_lib/http.ts');
 function fixture(){
  const db=new DatabaseSync(':memory:');
- for(const file of ['0001_initial','0003_product_personalization','0004_product_personalizable','0008_customer_accounts_first_purchase','0009_product_details_and_personalization','0011_gift_card_checkout','0012_whatsapp_recovery','0018_checkout_security']){
+ for(const file of ['0001_initial','0003_product_personalization','0004_product_personalizable','0008_customer_accounts_first_purchase','0009_product_details_and_personalization','0011_gift_card_checkout','0012_whatsapp_recovery','0018_checkout_security','0019_security_hardening']){
   db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations',file+'.sql'),'utf8'));
  }
  db.exec(`INSERT INTO customers(id,name,email,phone,password_hash,password_salt,account_claimed) VALUES(1,'Original','owner@example.test','51999990000','unchanged','unchanged',0);
@@ -21,7 +26,7 @@ function fixture(){
  const adapter={prepare(sql){let values=[];return {bind(...args){values=args;return this},async first(){return db.prepare(sql).get(...values)||null},async all(){return {results:db.prepare(sql).all(...values)}},run(){const r=db.prepare(sql).run(...values);return {success:true,meta:{changes:Number(r.changes),last_row_id:Number(r.lastInsertRowid)}}}}},async batch(stmts){db.exec('BEGIN');try{const rows=stmts.map(stmt=>stmt.run());db.exec('COMMIT');return rows}catch(e){db.exec('ROLLBACK');throw e}}};
  return {db,env:{DB:adapter,MERCADO_PAGO_ACCESS_TOKEN:'TEST-local-only'}};
 }
-const req=(path,body,headers={})=>new Request('https://elegance18k.com'+path,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)});
+const req=(path,body,headers={})=>new Request('https://elegance18k.com'+path,{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://elegance18k.com',...headers},body:JSON.stringify(body)});
 const checkout=()=>req('/api/checkout/mercado-pago',{customer:{name:'Changed',email:'owner@example.test',phone:'51888880000',cpf:'12345678901'},shipping:{method:'pickup'},items:[{product_id:1,variant_id:1,quantity:1}]});
 function order(db,id){db.prepare(`INSERT INTO orders(id,order_number,customer_id,subtotal_cents,total_cents,shipping_method) VALUES(?,?,1,10000,10000,'pickup')`).run(id,'ELG-'+id);db.prepare(`INSERT INTO order_items(order_id,product_id,variant_id,product_name,unit_price_cents,quantity) VALUES(?,1,1,'Piece',10000,1)`).run(id)}
 
@@ -79,7 +84,7 @@ test('expiration requires expired provider preference and no pending payments; r
 test('rate limits cover API and form logins, shared identities across IPs, and reject cross-origin',async()=>{
  const {db,env}=fixture();
  for(let i=0;i<12;i++)assert.equal(await protectRequest(req('/api/auth/login',{email:'same@example.test'},{'CF-Connecting-IP':String(i)}),env),null);
- const form=new Request('https://elegance18k.com/admin-login',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','CF-Connecting-IP':'new'},body:'email=same%40example.test&password=x'});
+ const form=new Request('https://elegance18k.com/admin-login',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','CF-Connecting-IP':'new',Origin:'https://elegance18k.com'},body:'email=same%40example.test&password=x'});
  assert.equal((await protectRequest(form,env)).status,429);
  assert.equal((await protectRequest(req('/api/auth/login',{}, {Origin:'https://evil.test'}),env)).status,403);
  assert.equal((await protectRequest(req('/api/auth/login',{password:'x'.repeat(17000)}),env)).status,413);db.close();
@@ -104,4 +109,101 @@ test('sessions that expired earlier today cannot authenticate',async()=>{
  const {env,db}=fixture();const token='expired-test';
  db.prepare("INSERT INTO sessions(customer_id,token_hash,expires_at) VALUES(1,?,?)").run(await sha256(token),new Date(Date.now()-1000).toISOString());
  assert.equal(await currentCustomer(new Request('https://elegance18k.com/api/auth/me',{headers:{Cookie:'elegance_session='+token}}),env),null);db.close();
+});
+
+test('strong password hashes retain legacy login and upgrade without changing password',async()=>{
+ const {db,env}=fixture();
+ const legacy=await hashPassword('test-long-password',undefined,10000);
+ const old=legacy.hash.split('$')[2];
+ assert.equal(await verifyPassword('test-long-password',legacy.salt,old),true);
+ assert.equal(await verifyPassword('wrong',legacy.salt,old),false);
+ db.prepare('UPDATE customers SET password_hash=?,password_salt=? WHERE id=1').run(old,legacy.salt);
+ await upgradePassword(env,1,'test-long-password',old);
+ const updated=db.prepare('SELECT password_hash,password_salt FROM customers').get();
+ assert.match(updated.password_hash,/^pbkdf2-sha256\$100000\$/);
+ assert.equal(await verifyPassword('test-long-password',updated.password_salt,updated.password_hash),true);
+ assert.equal(await verifyPassword('x','bad!','bad!'),false);db.close();
+});
+
+test('administrator sessions last eight hours, including existing long-lived sessions',async()=>{
+ const {db,env}=fixture();db.exec("UPDATE customers SET role='admin' WHERE id=1");
+ const session=await createSession(env,1);
+ assert.ok(Date.parse(session.expiresAt)-Date.now()<=8*3600000);
+ const request=new Request('https://elegance18k.com/api/auth/me',{headers:{Cookie:'elegance_session='+session.token}});
+ assert.equal((await currentCustomer(request,env)).role,'admin');
+ db.exec("UPDATE sessions SET created_at=datetime('now','-9 hours')");
+ assert.equal(await currentCustomer(request,env),null);db.close();
+});
+
+test('order number alone or another account cannot read order details; guest cookie can',async()=>{
+ const {db,env}=fixture(),original=global.fetch;
+ global.fetch=async()=>Response.json({id:'pref',sandbox_init_point:'https://example.test/pay'});
+ try {
+  const created=await createMercadoPagoCheckout(checkout(),env),body=await created.json();
+  const url='https://elegance18k.com/api/payments/status?pedido='+body.order_number;
+  assert.equal((await publicPaymentStatus(new Request(url),env)).status,404);
+  assert.equal((await publicPaymentStatus(new Request(url,{headers:{Cookie:created.headers.get('set-cookie').split(';')[0]}}),env)).status,200);
+  const owner=await createSession(env,1);
+  assert.equal((await publicPaymentStatus(new Request(url,{headers:{Cookie:'elegance_session='+owner.token}}),env)).status,200);
+  db.exec("INSERT INTO customers(id,name,email,password_hash,password_salt) VALUES(2,'Other','other@example.test','x','x')");
+  const other=await createSession(env,2);
+  assert.equal((await publicPaymentStatus(new Request(url,{headers:{Cookie:'elegance_session='+other.token}}),env)).status,404);
+ }finally{global.fetch=original;db.close()}
+});
+
+test('fake images, MIME mismatch, oversized and appended payloads are rejected',async()=>{
+ const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aP9sAAAAASUVORK5CYII=','base64');
+ assert.equal(await validImage(new File([png],'pixel.png',{type:'image/png'})),true);
+ assert.equal(await validImage(new File([png],'wrong.jpg',{type:'image/jpeg'})),false);
+ assert.equal(await validImage(new File(['<script>alert(1)</script>'],'fake.png',{type:'image/png'})),false);
+ assert.equal(await validImage(new File([png,'<script>evil</script>'],'polyglot.png',{type:'image/png'})),false);
+ assert.equal(await validImage(new File([new Uint8Array(5*1024*1024+1)],'big.png',{type:'image/png'})),false);
+ const form=new FormData();form.set('image',new File([png],'pixel.png',{type:'image/png'}));
+ assert.ok((await imageForm(new Request('https://elegance18k.com/upload',{method:'POST',body:form}))).get('image'));
+ await assert.rejects(()=>readBoundedBody(new Request('https://example.test',{method:'POST',body:'x'.repeat(20)}),10));
+});
+
+test('upload ownership is enforced and concurrent reuse rolls back atomically',async()=>{
+ const {db,env}=fixture(),token='a'.repeat(64),original=global.fetch;
+ db.exec("UPDATE products SET engraving_image_enabled=1 WHERE id=1; UPDATE product_variants SET stock=2");
+ db.prepare("INSERT INTO personalization_uploads(id,object_key,product_id,original_name,content_type,size_bytes,owner_hash) VALUES('upload','key',1,'image.png','image/png',100,?)").run(await sha256(token));
+ const body=await checkout().json();body.items[0].personalization={image_upload_id:'upload'};
+ assert.equal((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,400);
+ global.fetch=async()=>Response.json({id:'pref',sandbox_init_point:'https://example.test/pay'});
+ try {
+  const request=()=>req('/api/checkout/mercado-pago',body,{Cookie:'__Host-elegance-upload='+token});
+  const results=await Promise.all([createMercadoPagoCheckout(request(),env),createMercadoPagoCheckout(request(),env)]);
+  assert.equal(results.filter(r=>r.status===201).length,1);
+  assert.equal(db.prepare('SELECT stock FROM product_variants').get().stock,1);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM order_items').get().n,1);
+ }finally{global.fetch=original;db.close()}
+});
+
+test('mutations without origin are denied and public upload/recovery endpoints are rate limited',async()=>{
+ const {db,env}=fixture();
+ const missing=new Request('https://elegance18k.com/api/account',{method:'PUT',body:'{}'});
+ assert.equal((await protectRequest(missing,env)).status,403);
+ for(let i=0;i<5;i++)assert.equal(await protectRequest(req('/api/cart-recovery',{}),env),null);
+ assert.equal((await protectRequest(req('/api/cart-recovery',{}),env)).status,429);
+ for(let i=0;i<20;i++)assert.equal(await protectRequest(req('/api/personalization/upload',{}),env),null);
+ assert.equal((await protectRequest(req('/api/personalization/upload',{}),env)).status,429);db.close();
+});
+
+test('security headers block framing and executable inline attributes; private files denied',()=>{
+ const response=securityHeaders(new Response('ok',{headers:{'Access-Control-Allow-Origin':'*'}}),'testnonce');
+ assert.equal(response.headers.get('x-frame-options'),'DENY');
+ assert.equal(response.headers.get('access-control-allow-origin'),null);
+ assert.match(response.headers.get('content-security-policy'),/script-src-attr 'none'/);
+ assert.match(response.headers.get('content-security-policy'),/'nonce-testnonce'/);
+ for(const path of ['/.env','/%2eenv','/.git/config','/wrangler.toml','/package-lock.json','/docs/file.md','/functions/api/test.ts'])assert.equal(privatePath(path),true,path);
+ assert.equal(privatePath('/assets/image.jpg'),false);
+ assert.equal(privatePath('/api/products/item'),false);
+});
+
+test('checkout rejects fractional quantities and unknown shipping methods',async()=>{
+ const {db,env}=fixture();let body=await checkout().json();body.items[0].quantity=1.5;
+ assert.equal((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,400);
+ body=await checkout().json();body.shipping.method='free-anywhere';
+ assert.equal((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,400);
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM orders').get().n,0);db.close();
 });

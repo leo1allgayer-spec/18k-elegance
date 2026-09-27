@@ -1,6 +1,7 @@
 import type { Env } from "./types";
-import { apiError, json, normalizeEmail, readJson } from "./http";
-import { currentCustomer, hashPassword } from "./auth";
+import { apiError, json, normalizeEmail, readJson, parseCookies } from "./http";
+import { currentCustomer, hashPassword, sha256 } from "./auth";
+import { uploadOwner, randomToken, orderCookie } from './guest-access';
 import { calculateCorreiosQuotes } from "./correios";
 import { giftCardBalance, syncGiftPayment } from "./gift-cards";
 import { reservationStatements, releaseCheckout, finalizeOrder } from './checkout-stock';
@@ -43,6 +44,7 @@ async function mercadoPago<T>(env: Env, path: string, init: RequestInit = {}): P
   if (!env.MERCADO_PAGO_ACCESS_TOKEN) throw new Error("MERCADO_PAGO_NOT_CONFIGURED");
   const response = await fetch(`https://api.mercadopago.com${path}`, {
     ...init,
+    redirect: 'error',
     signal: AbortSignal.timeout(15000),
     headers: {
       Authorization: `Bearer ${env.MERCADO_PAGO_ACCESS_TOKEN}`,
@@ -83,10 +85,12 @@ async function customerId(env: Env, customer: NonNullable<CheckoutBody["customer
   }
 }
 
-async function resolveItems(env: Env, items: CheckoutItem[]): Promise<ProductRow[]> {
+async function resolveItems(env: Env, items: CheckoutItem[], owner: string): Promise<ProductRow[]> {
+  if (!Array.isArray(items) || items.length > 50) throw new Error('INVALID_CART');
   const resolved: ProductRow[] = [];
   for (const item of items.slice(0, 50)) {
-    const quantity = Math.trunc(Number(item.quantity));
+    if (!item || typeof item !== 'object') throw new Error('INVALID_CART');
+    const quantity = Number(item.quantity);
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20 || !item.product_id || !item.variant_id) {
       throw new Error("INVALID_CART");
     }
@@ -106,8 +110,8 @@ async function resolveItems(env: Env, items: CheckoutItem[]): Promise<ProductRow
     if (imageUploadId && !row.engraving_image_enabled) throw new Error("INVALID_PERSONALIZATION_IMAGE");
     if (engravingText.length > 80) throw new Error("INVALID_PERSONALIZATION");
     if (imageUploadId) {
-      const upload = await env.DB.prepare("SELECT id FROM personalization_uploads WHERE id=? AND product_id=? AND order_id IS NULL")
-        .bind(imageUploadId, row.product_id).first();
+      const upload = await env.DB.prepare("SELECT id FROM personalization_uploads WHERE id=? AND product_id=? AND order_id IS NULL AND owner_hash=? AND created_at>datetime('now','-30 days')")
+        .bind(imageUploadId, row.product_id, owner).first();
       if (!upload) throw new Error("INVALID_PERSONALIZATION_IMAGE");
     }
     const fee = (engravingText ? row.engraving_text_price_cents : 0) + (imageUploadId ? row.engraving_image_price_cents : 0);
@@ -142,7 +146,7 @@ export async function validateCartCoupon(request: Request, env: Env): Promise<Re
   const code = body.code?.trim().toUpperCase() || "";
   if (!code) return apiError("Digite o código do cupom.", 400, "INVALID_COUPON");
   try {
-    const products = await resolveItems(env, body.items || []);
+    const products = await resolveItems(env, body.items || [], await uploadOwner(request));
     const subtotal = products.reduce((sum, item) => sum + item.unit_price_cents * item.stock, 0);
     const customer = await currentCustomer(request, env);
     const requiresEligibilityCheck = code === FIRST_PURCHASE_COUPON && !customer;
@@ -152,25 +156,27 @@ export async function validateCartCoupon(request: Request, env: Env): Promise<Re
     const code = error instanceof Error ? error.message : "INVALID_COUPON";
     if (code === "FIRST_PURCHASE_USED") return apiError("Esta conta já possui uma compra. O cupom PRIMEIRAELEGANCE é exclusivo para a primeira compra.", 400, code);
     if (code === "INVALID_COUPON") return apiError("Cupom inválido, expirado ou indisponível para este pedido.", 400, code);
-    return apiError("Não foi possível validar o cupom com esta sacola.", 400, code);
+    return apiError("Não foi possível validar o cupom com esta sacola.", 400, 'INVALID_CART');
   }
 }
 
 export async function createMercadoPagoCheckout(request: Request, env: Env): Promise<Response> {
   if (!env.MERCADO_PAGO_ACCESS_TOKEN) return apiError("O Mercado Pago ainda não está configurado.", 503, "PAYMENT_NOT_CONFIGURED");
   const body = await readJson<CheckoutBody>(request);
+  if (!['pickup','correios','motoboy'].includes(body.shipping?.method || 'pickup')) return apiError('Forma de entrega inválida.');
+  if (body.payment_method && !['pix','other'].includes(body.payment_method)) return apiError('Forma de pagamento inválida.');
   const customer = body.customer || {};
   const email = normalizeEmail(customer.email || "");
-  if ((customer.name?.trim().length || 0) < 2 || !validEmail(email) || digits(customer.phone || "").length < 10 || digits(customer.cpf || "").length !== 11) {
+  if ((customer.name?.trim().length || 0) < 2 || (customer.name?.length || 0) > 150 || email.length>254 || !validEmail(email) || digits(customer.phone || "").length < 10 || digits(customer.phone || '').length>13 || digits(customer.cpf || "").length !== 11) {
     return apiError("Revise nome, e-mail, CPF e celular.", 400, "INVALID_CUSTOMER");
   }
   let products: ProductRow[];
-  try { products = await resolveItems(env, body.items || []); }
+  try { products = await resolveItems(env, body.items || [], await uploadOwner(request)); }
   catch (error) {
     const code = error instanceof Error ? error.message : "INVALID_CART";
     if (code === "OUT_OF_STOCK") return apiError("Um produto ficou sem estoque. Atualize a sacola.", 409, code);
     if (code.startsWith("INVALID_PERSONALIZATION")) return apiError("Revise os dados da fotogravação.", 400, code);
-    return apiError("A sacola contém itens inválidos.", 400, code);
+    return apiError("A sacola contém itens inválidos.", 400, 'INVALID_CART');
   }
   const subtotal = products.reduce((sum, item) => sum + item.unit_price_cents * item.stock, 0);
   const id = await customerId(env, customer);
@@ -184,9 +190,15 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
   try { discount = await calculateDiscount(env, couponCode, subtotal, id); }
   catch (error) {
     const code = error instanceof Error ? error.message : "INVALID_COUPON";
-    return apiError(code === "FIRST_PURCHASE_USED" ? "O cupom de primeira compra já foi utilizado." : "O cupom informado não é válido.", 400, code);
+    return apiError(code === "FIRST_PURCHASE_USED" ? "O cupom de primeira compra já foi utilizado." : "O cupom informado não é válido.", 400, code === 'FIRST_PURCHASE_USED' ? code : 'INVALID_COUPON');
   }
   const shippingMethod = body.shipping?.method || "pickup";
+  if (shippingMethod !== 'pickup') {
+    const address=body.shipping!;
+    if (digits(address.postal_code||'').length!==8 || !/^[A-Za-z]{2}$/.test(address.state||'') ||
+      ![address.street,address.number,address.neighborhood,address.city].every(v=>typeof v==='string'&&v.trim().length>0&&v.length<=200))
+      return apiError('Preencha o endereço de entrega completo.');
+  }
   let shippingCents = 0;
   if (shippingMethod === "motoboy") {
     const city = (body.shipping?.city || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
@@ -231,6 +243,8 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
   const orderResult = await env.DB.prepare(`INSERT INTO orders(order_number,customer_id,status,subtotal_cents,discount_cents,shipping_cents,total_cents,shipping_method,shipping_address_json,coupon_id)
     VALUES(?,?,'pending_payment',?,?,?,?,?,?,?)`).bind(orderNumber, id, subtotal, discount.cents, shippingCents, total, shippingMethod, address, discount.couponId).run();
   const orderId = Number(orderResult.meta.last_row_id);
+  const accessToken = randomToken();
+  const accessHeaders = {'Set-Cookie':orderCookie(orderNumber,accessToken)};
   let giftCents = 0;
   if (body.gift_card_code) {
     const card = await giftCardBalance(env, body.gift_card_code.trim().toUpperCase());
@@ -252,15 +266,15 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
   }
   const payable = total - giftCents;
   try { await env.DB.batch([
-    env.DB.prepare('INSERT INTO checkout_security(order_id,expires_at) VALUES(?,?)').bind(orderId,expiresAt),
+    env.DB.prepare('INSERT INTO checkout_security(order_id,expires_at,access_token_hash) VALUES(?,?,?)').bind(orderId,expiresAt,await sha256(accessToken)),
     ...reservationStatements(env,orderId,products),
     ...products.map(item => env.DB.prepare(`INSERT INTO order_items(order_id,product_id,variant_id,product_name,sku,unit_price_cents,quantity,personalization_json,personalization_fee_cents)
       VALUES(?,?,?,?,?,?,?,?,?)`).bind(orderId, item.product_id, item.variant_id, item.name, item.sku, item.unit_price_cents, item.stock, item.personalization_json, item.personalization_fee_cents)),
-    ...products.filter(item => item.image_upload_id).map(item => env.DB.prepare("UPDATE personalization_uploads SET order_id=? WHERE id=? AND order_id IS NULL").bind(orderId, item.image_upload_id)),
     env.DB.prepare("INSERT INTO payments(order_id,provider,status,amount_cents) VALUES(?,?,'pending',?)").bind(orderId, payable ? "mercado_pago" : "gift_card", payable),
   ]); } catch (error) {
     await releaseCheckout(env,orderId);
     if (String(error).includes('OUT_OF_STOCK')) return apiError('Um produto acabou de ficar indisponível. Atualize a sacola.',409,'OUT_OF_STOCK');
+    if (String(error).includes('INVALID_PERSONALIZATION_IMAGE')) return apiError('Envie novamente a imagem da personalização.',409,'INVALID_PERSONALIZATION_IMAGE');
     throw error;
   }
   const origin = new URL(request.url).origin;
@@ -270,7 +284,7 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
       env.DB.prepare("UPDATE payments SET status='approved' WHERE order_id=?").bind(orderId),
       env.DB.prepare("UPDATE gift_card_uses SET status='spent' WHERE order_id=?").bind(orderId),
     ]);
-    return json({ok:true,order_number:orderNumber,checkout_url:origin+"/pagamento-retorno.html?status=success&pedido="+encodeURIComponent(orderNumber)},201);
+    return json({ok:true,order_number:orderNumber,checkout_url:origin+"/pagamento-retorno.html?status=success&pedido="+encodeURIComponent(orderNumber)},201,accessHeaders);
   }
   const preferenceBody = {
     expires: true,
@@ -307,7 +321,7 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
     const checkoutUrl = env.MERCADO_PAGO_ACCESS_TOKEN.startsWith("TEST-") ? preference.sandbox_init_point : preference.init_point;
     if (!checkoutUrl) throw new Error("MERCADO_PAGO_WITHOUT_URL");
     if(giftCents)await env.DB.prepare("UPDATE orders SET gift_checkout_url=? WHERE id=?").bind(checkoutUrl,orderId).run();
-    return json({ ok: true, order_number: orderNumber, checkout_url: checkoutUrl }, 201);
+    return json({ ok: true, order_number: orderNumber, checkout_url: checkoutUrl }, 201, accessHeaders);
   } catch (error) {
     if (/^MERCADO_PAGO_4\d\d$/.test(error instanceof Error ? error.message : '')) await releaseCheckout(env,orderId);
     await env.DB.batch([
@@ -381,8 +395,13 @@ export async function applyMercadoPagoPayment(env: Env, payment: MercadoPagoPaym
 export async function publicPaymentStatus(request: Request, env: Env): Promise<Response> {
   const orderNumber = new URL(request.url).searchParams.get("pedido")?.trim() || "";
   if (!/^ELG-[A-Z0-9-]+$/.test(orderNumber)) return apiError("Pedido inválido.");
-  const order = await env.DB.prepare(`SELECT order_number,status,total_cents,shipping_method,tracking_code,created_at
-    FROM orders WHERE order_number=?`).bind(orderNumber).first();
+  const customer = await currentCustomer(request,env);
+  const token=parseCookies(request)[`elegance_order_${orderNumber}`]||'';
+  const tokenHash=/^[a-f0-9]{64}$/.test(token)?await sha256(token):'';
+  const order = await env.DB.prepare(`SELECT o.order_number,o.status,o.total_cents,o.shipping_method,o.tracking_code,o.created_at
+    FROM orders o LEFT JOIN checkout_security s ON s.order_id=o.id WHERE o.order_number=?
+    AND (o.customer_id=? OR ?='admin' OR (s.access_token_hash=? AND datetime(o.created_at)>datetime('now','-30 days')))`)
+    .bind(orderNumber,customer?.id||-1,customer?.role||'',tokenHash).first();
   return order ? json({ ok: true, order }) : apiError("Pedido não encontrado.", 404, "NOT_FOUND");
 }
 

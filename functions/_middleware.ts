@@ -1,5 +1,6 @@
 import type { Env } from "./_lib/types";
 import { protectRequest } from "./_lib/request-security";
+import { privatePath, securityHeaders } from "./_lib/security-headers";
 
 const LEGACY_HOST = "site-18-kelegance.pages.dev";
 const PRIMARY_ORIGIN = "https://elegance18k.com";
@@ -200,7 +201,7 @@ class SetTitle {
 }
 
 class AppendSeo {
-  constructor(private readonly seo: SeoData) {}
+  constructor(private readonly seo: SeoData, private readonly nonce: string) {}
   element(element: Element) {
     const seo = this.seo;
     const tags = [
@@ -219,7 +220,7 @@ class AppendSeo {
       `<meta name="twitter:title" content="${escapeHtml(seo.title)}">`,
       `<meta name="twitter:description" content="${escapeHtml(seo.description)}">`,
       `<meta name="twitter:image" content="${escapeHtml(seo.image || DEFAULT_IMAGE)}">`,
-      ...(seo.jsonLd || []).map(data => `<script type="application/ld+json">${JSON.stringify(data).replace(/</g, "\\u003c")}</script>`),
+      ...(seo.jsonLd || []).map(data => `<script nonce="${this.nonce}" type="application/ld+json">${JSON.stringify(data).replace(/</g, "\\u003c")}</script>`),
     ].join("");
     element.append(tags, { html: true });
   }
@@ -227,27 +228,32 @@ class AppendSeo {
 
 export const onRequest: PagesFunction<Env> = async (context) => {
   const url = new URL(context.request.url);
+  if (privatePath(url.pathname)) return securityHeaders(new Response('Not found',{status:404}));
   try {
     const blocked = await protectRequest(context.request, context.env);
-    if (blocked) return blocked;
+    if (blocked) return securityHeaders(blocked);
   } catch {
-    return Response.json({ok:false,error:{message:'Não foi possível validar a solicitação. Tente novamente.'}},{status:503,headers:{'Cache-Control':'no-store'}});
+    return securityHeaders(Response.json({ok:false,error:{message:'Não foi possível validar a solicitação. Tente novamente.'}},{status:503,headers:{'Cache-Control':'no-store'}}));
   }
   if (url.hostname === LEGACY_HOST && !url.pathname.startsWith("/api/")) {
     const destination = new URL(url.pathname + url.search, PRIMARY_ORIGIN);
-    return Response.redirect(destination.toString(), 308);
+    return securityHeaders(Response.redirect(destination.toString(), 308));
   }
   const response = await context.next();
   const contentType = response.headers.get("content-type") || "";
-  if (!contentType.includes("text/html") || response.status >= 400) return response;
+  if (!contentType.includes("text/html") || response.status >= 400) return securityHeaders(response);
+  const nonce = crypto.randomUUID().replaceAll('-','');
   const seo = await resolveSeo(url, context.env);
   const headers = new Headers(response.headers);
+  // Nonces must not be shared through HTML caches.
+  headers.set('Cache-Control','no-store');
   headers.set("Link", `<${seo.canonical}>; rel="canonical"`);
   if (seo.robots?.startsWith("noindex")) headers.set("X-Robots-Tag", seo.robots);
   const transformed = new HTMLRewriter()
     .on("title", new SetTitle(seo.title))
     .on('meta[name="description"],meta[name="robots"],link[rel="canonical"],meta[property^="og:"],meta[name^="twitter:"]', new RemoveElement())
-    .on("head", new AppendSeo(seo))
+    .on('script', {element(element) { element.setAttribute('nonce',nonce); }})
+    .on("head", new AppendSeo(seo,nonce))
     .transform(new Response(response.body, { status: response.status, statusText: response.statusText, headers }));
-  return transformed;
+  return securityHeaders(transformed,nonce);
 };

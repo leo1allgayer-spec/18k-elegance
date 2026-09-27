@@ -1,6 +1,6 @@
 import type { Env } from './types';
 import { sha256 } from './auth';
-import { apiError, json } from './http';
+import { apiError, json, readBoundedBody, BodyTooLarge } from './http';
 
 export async function consumeLimit(env: Env, key: string, limit: number, seconds = 900): Promise<boolean> {
   const now = Math.floor(Date.now() / 1000);
@@ -15,33 +15,38 @@ export async function consumeLimit(env: Env, key: string, limit: number, seconds
 export async function protectRequest(request: Request, env: Env): Promise<Response | null> {
   const url = new URL(request.url);
   const path = '/' + url.pathname.split('/').filter(Boolean).join('/');
-  if (['GET','HEAD','OPTIONS'].includes(request.method)) return null;
+  const ip = request.headers.get('CF-Connecting-IP') || 'local';
+  if (['GET','HEAD','OPTIONS'].includes(request.method)) {
+    if (['/api/payments/status','/api/gift-cards','/api/cart-recovery','/api/payments/mercado-pago/diagnostic'].includes(path)
+      && !await consumeLimit(env, `public-read:ip:${ip}`, 120)) return limited();
+    return null;
+  }
   const serverCallback = ['/api/payments/mercado-pago/webhook','/api/integrations/bling-stock-tick'].includes(path);
-  if (serverCallback) return null;
+  if (serverCallback) {
+    try { await readBoundedBody(request.clone(),65536); } catch { return apiError('Dados muito grandes.',413); }
+    return null;
+  }
   const origin = request.headers.get('Origin');
-  if ((origin && origin !== url.origin) || request.headers.get('Sec-Fetch-Site') === 'cross-site') return apiError('Origem inválida.',403);
+  // Fail closed: all browser mutations must present an exact same-origin Origin.
+  // Only independently signed server callbacks above are exempt.
+  if (origin !== url.origin || request.headers.get('Sec-Fetch-Site') === 'cross-site') return apiError('Origem inválida.',403);
   const auth = path === '/admin-login' || path.startsWith('/api/auth/');
   const checkout = path === '/api/checkout/mercado-pago';
-  if (!auth && !checkout) return null;
+  const upload = path === '/api/personalization/upload' || /^\/api\/admin\/products\/\d+\/image$/.test(path);
+  if (!auth && !checkout) {
+    const group = upload ? 'upload' : path.startsWith('/api/admin/') ? 'admin-write' : path;
+    const limit = upload ? 20 : path === '/api/cart-recovery' ? 5 : path.startsWith('/api/reviews/') ? 15 : 90;
+    if (!await consumeLimit(env, `${group}:ip:${ip}`,limit)) return limited();
+    try { await readBoundedBody(request.clone(), upload ? 5*1024*1024+16384 : 65536); }
+    catch (error) { if (error instanceof BodyTooLarge) return apiError('Dados muito grandes.',413); throw error; }
+    return null;
+  }
   if (path === '/api/auth/logout') return null;
-  const ip = request.headers.get('CF-Connecting-IP') || 'local';
   const group = checkout ? 'checkout' : 'auth';
   if (!await consumeLimit(env, `${group}:ip:${ip}`, checkout ? 15 : 40)) return limited();
-  // Bound the cloned body before parsing; Content-Length alone is not trustworthy.
-  const reader = request.clone().body?.getReader();
-  let size = 0;
-  const chunks: Uint8Array[] = [];
-  if (reader) {
-    while (true) {
-      const result = await reader.read();
-      if (result.done) break;
-      size += result.value.byteLength;
-      if (size > (checkout ? 65536 : 16384)) { void reader.cancel(); return apiError('Dados muito grandes.',413); }
-      chunks.push(result.value);
-    }
-  }
-  const bytes = new Uint8Array(size); let offset = 0;
-  for (const chunk of chunks) { bytes.set(chunk,offset); offset += chunk.length; }
+  let bytes;
+  try { bytes = await readBoundedBody(request.clone(),checkout ? 65536 : 16384); }
+  catch (error) { if (error instanceof BodyTooLarge) return apiError('Dados muito grandes.',413); throw error; }
   const text = new TextDecoder().decode(bytes);
   let identity = '';
   try {

@@ -16,14 +16,14 @@ export async function sendWhatsAppMessage(env: Env, to: string, text: string): P
   const baseUrl = env.EVOLUTION_API_URL.trim().replace(/\/+$/, "");
   if (!/^https:\/\//i.test(baseUrl)) throw new Error("EVOLUTION_URL_INVALID");
   const response = await fetch(`${baseUrl}/message/sendText/${encodeURIComponent(env.EVOLUTION_INSTANCE)}`, {
+    redirect: 'error',
     method: "POST",
     headers: { apikey: env.EVOLUTION_API_KEY, "Content-Type": "application/json" },
     body: JSON.stringify({ number: to, text, delay: 800, linkPreview: true }),
     signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) {
-    const detail = (await response.text()).slice(0, 800);
-    console.error("Evolution API error", { status: response.status, detail });
+    console.error("Evolution API error", { status: response.status });
     throw new Error("EVOLUTION_SEND_FAILED");
   }
 }

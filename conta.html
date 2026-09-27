@@ -42,8 +42,8 @@
       </form>
       <form id="account-reset" class="account-form" hidden>
         <p class="account-form-intro">Crie uma nova senha para sua conta.</p>
-        <label>Nova senha<input name="password" type="password" autocomplete="new-password" minlength="8" required><small>Mínimo de 8 caracteres</small></label>
-        <label>Repita a nova senha<input name="password_confirmation" type="password" autocomplete="new-password" minlength="8" required></label>
+        <label>Nova senha<input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required><small>Mínimo de 12 caracteres</small></label>
+        <label>Repita a nova senha<input name="password_confirmation" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
         <button class="button" type="submit">Salvar nova senha</button>
         <button class="account-help" data-back-to-login type="button">Voltar para entrar</button>
       </form>
@@ -52,7 +52,7 @@
         <label>E-mail<input name="email" type="email" autocomplete="email" required></label>
         <label>Celular<input name="phone" autocomplete="tel" required></label>
         <label>Data de nascimento<input name="birth_date" type="date"></label>
-        <label>Crie uma senha<input name="password" type="password" autocomplete="new-password" minlength="8" required><small>Mínimo de 8 caracteres</small></label>
+        <label>Crie uma senha<input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required><small>Mínimo de 12 caracteres</small></label>
         <button class="button" type="submit">Criar minha conta</button>
       </form>
       <p class="account-message" aria-live="polite"></p>
@@ -69,6 +69,6 @@
       <p class="dashboard-message account-message" aria-live="polite"></p>
     </section>
   </main>
-  <script src="conta.js?v=20260915-account-summary"></script>
+  <script src="conta.js?v=20260927-hardening"></script>
 </body>
 </html>

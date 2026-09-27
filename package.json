@@ -2,15 +2,16 @@
   "name": "elegance-18k",
   "private": true,
   "scripts": {
+    "build": "node tools/build-site.cjs",
     "typecheck": "tsc --noEmit",
     "test:stock": "node --test tests/bling-stock.test.cjs",
     "test:security": "node --test tests/checkout-security.test.cjs",
     "dev": "wrangler pages dev ."
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "latest",
+    "@cloudflare/workers-types": "5.20260927.1",
     "esbuild": "^0.28.1",
     "typescript": "latest",
-    "wrangler": "latest"
+    "wrangler": "4.141.0"
   }
 }

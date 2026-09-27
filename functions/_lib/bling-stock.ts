@@ -39,6 +39,7 @@ export async function stockSchema(env: Pick<Env, "DB">): Promise<void> {
 
 async function bling<T>(token: string, path: string, body?: unknown): Promise<T> {
   const response = await fetch(`https://api.bling.com.br/Api/v3${path}`, {
+    redirect: 'error',
     method: body === undefined ? "GET" : "POST",
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(12000),

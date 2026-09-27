@@ -1,5 +1,5 @@
 import type { Env } from "./_lib/types";
-import { createSession, sessionCookie, verifyPassword } from "./_lib/auth";
+import { createSession, sessionCookie, verifyPassword, upgradePassword } from "./_lib/auth";
 
 function redirect(location: string, cookie?: string): Response {
   const headers = new Headers({ Location: location, "Cache-Control": "no-store" });
@@ -22,6 +22,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     if (!record || record.role !== "admin" || !(await verifyPassword(password, String(record.password_salt), String(record.password_hash)))) {
       return redirect("/admin?erro=credenciais");
     }
+    await upgradePassword(env, Number(record.id), password, String(record.password_hash));
     const session = await createSession(env, Number(record.id));
     return loginSuccess(sessionCookie(session.token, session.expiresAt));
   } catch (error) {

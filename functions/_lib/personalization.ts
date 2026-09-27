@@ -1,5 +1,8 @@
 import type { Env } from "./types";
 import { apiError, json } from "./http";
+import { imageForm, validImage } from './image-validation';
+import { guestToken, randomToken, guestCookie } from './guest-access';
+import { sha256 } from './auth';
 
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -9,11 +12,12 @@ export async function uploadProductImage(request: Request, env: Env, productId: 
   if (!Number.isInteger(productId) || productId < 1) return apiError("Produto inválido.");
   const product = await env.DB.prepare("SELECT id,name FROM products WHERE id=?").bind(productId).first<{ id: number; name: string }>();
   if (!product) return apiError("Produto não encontrado.", 404, "NOT_FOUND");
-  const form = await request.formData();
+  const form = await imageForm(request);
   const image = form.get("image");
   const append = form.get("append") === "1";
   if (!(image instanceof File)) return apiError("Selecione uma imagem do produto.");
   if (!ALLOWED_TYPES.has(image.type) || image.size < 1 || image.size > MAX_BYTES) return apiError("Use uma imagem JPG, PNG ou WebP com até 5 MB.");
+  if (!await validImage(image)) return apiError('O conteúdo do arquivo não é uma imagem válida ou excede as dimensões permitidas.');
   const extension = image.type === "image/png" ? "png" : image.type === "image/webp" ? "webp" : "jpg";
   const filename = crypto.randomUUID() + "." + extension;
   const key = "products/" + productId + "/" + filename;
@@ -43,11 +47,12 @@ export async function uploadPersonalization(request: Request, env: Env): Promise
   if (!env.PERSONALIZATION_BUCKET) return apiError("O envio de imagens ainda não foi ativado.", 503, "UPLOAD_NOT_CONFIGURED");
   const contentType = request.headers.get("content-type") || "";
   if (!contentType.includes("multipart/form-data")) return apiError("Envie a imagem como formulário.");
-  const form = await request.formData();
+  const form = await imageForm(request);
   const productId = Number(form.get("product_id"));
   const file = form.get("image");
   if (!Number.isInteger(productId) || !(file instanceof File)) return apiError("Produto ou imagem inválidos.");
   if (!ALLOWED_TYPES.has(file.type) || file.size < 1 || file.size > MAX_BYTES) return apiError("Use uma imagem JPG, PNG ou WebP com até 5 MB.");
+  if (!await validImage(file)) return apiError('O conteúdo do arquivo não é uma imagem válida ou excede as dimensões permitidas.');
   const product = await env.DB.prepare(`SELECT p.id FROM products p JOIN categories c ON c.id=p.category_id
     WHERE p.id=? AND p.active=1 AND (p.personalizable=1 OR c.slug='fotogravacao')`).bind(productId).first();
   if (!product) return apiError("Este produto não aceita fotogravação.", 400, "NOT_PERSONALIZABLE");
@@ -55,9 +60,10 @@ export async function uploadPersonalization(request: Request, env: Env): Promise
   const extension = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
   const key = `pending/${new Date().toISOString().slice(0, 10)}/${id}.${extension}`;
   await env.PERSONALIZATION_BUCKET.put(key, file.stream(), { httpMetadata: { contentType: file.type }, customMetadata: { uploadId: id } });
-  await env.DB.prepare(`INSERT INTO personalization_uploads(id,object_key,product_id,original_name,content_type,size_bytes)
-    VALUES(?,?,?,?,?,?)`).bind(id, key, productId, file.name.slice(0, 160), file.type, file.size).run();
-  return json({ ok: true, upload: { id, name: file.name, size: file.size } }, 201);
+  const token = guestToken(request) || randomToken();
+  await env.DB.prepare(`INSERT INTO personalization_uploads(id,object_key,product_id,original_name,content_type,size_bytes,owner_hash)
+    VALUES(?,?,?,?,?,?,?)`).bind(id, key, productId, file.name.slice(0, 160), file.type, file.size, await sha256(token)).run();
+  return json({ ok: true, upload: { id, name: file.name, size: file.size } }, 201, {'Set-Cookie':guestCookie(token)});
 }
 
 export async function adminPersonalizationImage(env: Env, id: string): Promise<Response> {
@@ -67,5 +73,5 @@ export async function adminPersonalizationImage(env: Env, id: string): Promise<R
   if (!upload) return apiError("Imagem não encontrada.", 404, "NOT_FOUND");
   const object = await env.PERSONALIZATION_BUCKET.get(upload.object_key);
   if (!object) return apiError("Arquivo não encontrado.", 404, "NOT_FOUND");
-  return new Response(object.body, { headers: { "Content-Type": upload.content_type, "Content-Disposition": `inline; filename="${upload.original_name.replace(/[\"\\]/g, "")}"`, "Cache-Control": "private, no-store" } });
+  return new Response(object.body, { headers: { "Content-Type": upload.content_type, "Content-Disposition": `inline; filename="image"`, "Cache-Control": "private, no-store", 'X-Content-Type-Options':'nosniff' } });
 }

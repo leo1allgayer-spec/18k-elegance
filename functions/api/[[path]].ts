@@ -1,6 +1,6 @@
 import type { Env } from "../_lib/types";
 import { apiError, json, normalizeEmail, readJson } from "../_lib/http";
-import { clearSessionCookie, createSession, currentCustomer, deleteCurrentSession, hashPassword, sessionCookie, sha256, verifyPassword } from "../_lib/auth";
+import { clearSessionCookie, createSession, currentCustomer, deleteCurrentSession, hashPassword, sessionCookie, sha256, verifyPassword, upgradePassword } from "../_lib/auth";
 import { createMercadoPagoCheckout, mercadoPagoDiagnostic, mercadoPagoWebhook, publicPaymentStatus, validateCartCoupon } from "../_lib/mercado-pago";
 import { correiosConfigured, publicCorreiosQuote } from "../_lib/correios";
 import { blingCallback, blingConnect, blingStatus, blingDiagnostics, disconnectBling } from "../_lib/bling";
@@ -342,14 +342,14 @@ async function register(request: Request, env: Env): Promise<Response> {
   const name = body.name?.trim() || "";
   const email = normalizeEmail(body.email || "");
   const password = body.password || "";
-  if (name.length < 2) return apiError("Informe seu nome completo.");
-  if (!/^\S+@\S+\.\S+$/.test(email)) return apiError("Informe um e-mail válido.");
-  if (password.length < 8) return apiError("A senha deve ter pelo menos 8 caracteres.");
+  if (name.length < 2 || name.length > 150) return apiError("Informe seu nome completo (até 150 caracteres).");
+  if (email.length>254 || !/^\S+@\S+\.\S+$/.test(email)) return apiError("Informe um e-mail válido.");
+  if (typeof password !== 'string' || password.length < 12 || password.length > 128) return apiError("Use uma senha entre 12 e 128 caracteres.");
   if (body.birth_date && !/^\d{4}-\d{2}-\d{2}$/.test(body.birth_date)) return apiError("Informe uma data de nascimento válida.");
   const existing = await env.DB.prepare("SELECT id,account_claimed FROM customers WHERE email = ?").bind(email).first<{ id: number; account_claimed: number }>();
-  const credentials = await hashPassword(password);
   let customerId: number;
   if (existing) return apiError("Este e-mail já possui cadastro. Entre na conta ou use a recuperação de senha pelo celular cadastrado.", 409, "EMAIL_EXISTS");
+  const credentials = await hashPassword(password);
   {
     const result = await env.DB.prepare(`INSERT INTO customers(name,email,phone,birth_date,password_hash,password_salt,account_claimed)
       VALUES(?,?,?,?,?,?,1)`).bind(name, email, body.phone?.trim() || null, body.birth_date || null, credentials.hash, credentials.salt).run();
@@ -376,7 +376,7 @@ async function updateAccount(request: Request, env: Env): Promise<Response> {
   const customer = await currentCustomer(request, env);
   if (!customer || customer.role !== "customer") return apiError("Entre na sua conta para continuar.", 401, "UNAUTHENTICATED");
   const body = await readJson<AccountBody>(request), name = body.name?.trim() || "";
-  if (name.length < 2) return apiError("Informe seu nome completo.");
+  if (name.length < 2 || name.length > 150 || (body.phone?.length||0)>30) return apiError("Revise nome e telefone.");
   if (body.birth_date && !/^\d{4}-\d{2}-\d{2}$/.test(body.birth_date)) return apiError("Informe uma data de nascimento válida.");
   await env.DB.prepare("UPDATE customers SET name=?,phone=?,birth_date=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(name, body.phone?.trim() || null, body.birth_date || null, customer.id).run();
   return json({ ok: true });
@@ -404,6 +404,7 @@ async function login(request: Request, env: Env): Promise<Response> {
   if (!record || !body.password || !(await verifyPassword(body.password, String(record.password_salt), String(record.password_hash)))) {
     return apiError("E-mail ou senha incorretos.", 401, "INVALID_CREDENTIALS");
   }
+  await upgradePassword(env, Number(record.id), body.password, String(record.password_hash));
   const session = await createSession(env, Number(record.id));
   const { password_hash, password_salt, ...customer } = record;
   return json({ ok: true, customer }, 200, { "Set-Cookie": sessionCookie(session.token, session.expiresAt) });
@@ -447,7 +448,7 @@ async function resetPassword(request: Request, env: Env): Promise<Response> {
   const token = String(body.token || "");
   const password = String(body.password || "");
   if (token.length < 30) return apiError("Este link de recuperação é inválido.", 400, "INVALID_TOKEN");
-  if (password.length < 8) return apiError("A senha deve ter pelo menos 8 caracteres.");
+  if (password.length < 12 || password.length > 128) return apiError("Use uma senha entre 12 e 128 caracteres.");
   const tokenHash = await sha256(token);
   const record = await env.DB.prepare(`SELECT id, customer_id FROM password_reset_tokens
     WHERE token_hash=? AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP`).bind(tokenHash).first<{ id: number; customer_id: number }>();
@@ -511,31 +512,11 @@ async function route(request: Request, env: Env): Promise<Response> {
     target.search = source.search;
     return Response.redirect(target.toString(), 302);
   }
-  const correiosMissing = [
-    ["CORREIOS_USER", env.CORREIOS_USER],
-    ["CORREIOS_ACCESS_CODE", env.CORREIOS_ACCESS_CODE],
-    ["CORREIOS_POSTING_CARD", env.CORREIOS_POSTING_CARD],
-    ["CORREIOS_CONTRACT", env.CORREIOS_CONTRACT],
-    ["CORREIOS_DR", env.CORREIOS_DR],
-    ["CORREIOS_ORIGIN_ZIP", env.CORREIOS_ORIGIN_ZIP],
-    ["CORREIOS_PAC_CODE", env.CORREIOS_PAC_CODE],
-    ["CORREIOS_SEDEX_CODE", env.CORREIOS_SEDEX_CODE],
-  ].filter(([, value]) => !String(value || "").trim()).map(([name]) => name);
-  if (env.CORREIOS_ORIGIN_ZIP && env.CORREIOS_ORIGIN_ZIP.replace(/\D/g, "").length !== 8) {
-    correiosMissing.push("CORREIOS_ORIGIN_ZIP_INVALID");
-  }
   if (method === "GET" && parts[0] === "health") return json({
     ok: true,
     service: "elegance-api",
-    database: "connected",
     integrations: {
-      mercado_pago: Boolean(env.MERCADO_PAGO_ACCESS_TOKEN),
-      mercado_pago_webhook: Boolean(env.MERCADO_PAGO_WEBHOOK_SECRET),
       correios: correiosConfigured(env),
-      correios_missing: correiosMissing,
-      bling: Boolean(env.BLING_CLIENT_ID && env.BLING_CLIENT_SECRET),
-      whatsapp: whatsappConfigured(env),
-      evolution_api: whatsappConfigured(env),
     },
   });
   if (method === "GET" && parts[0] === "categories") return categories(env);
@@ -548,7 +529,10 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (method === "GET" && parts[0] === "product-images" && parts[1] && parts[2]) return publicProductImage(env, integer(parts[1]), parts[2]);
   if (method === "POST" && parts.join("/") === "shipping/correios/quote") return publicCorreiosQuote(request, env);
   if (method === "POST" && parts.join("/") === "payments/mercado-pago/webhook") return mercadoPagoWebhook(request, env);
-  if (method === "GET" && parts.join("/") === "payments/mercado-pago/diagnostic") return mercadoPagoDiagnostic(env);
+  if (method === "GET" && parts.join("/") === "payments/mercado-pago/diagnostic") {
+    if (!await requireAdmin(request,env)) return apiError('Acesso restrito.',403,'FORBIDDEN');
+    return mercadoPagoDiagnostic(env);
+  }
   if (method === "GET" && parts.join("/") === "payments/status") return publicPaymentStatus(request, env);
   if (method === "POST" && parts.join("/") === "auth/register") return register(request, env);
   if (method === "POST" && parts.join("/") === "auth/login") return login(request, env);

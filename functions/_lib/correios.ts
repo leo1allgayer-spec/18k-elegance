@@ -21,6 +21,7 @@ async function correiosToken(env: Env) {
   }
   const basic = btoa(`${env.CORREIOS_USER}:${env.CORREIOS_ACCESS_CODE}`);
   const response = await fetch("https://api.correios.com.br/token/v1/autentica/cartaopostagem", {
+    redirect: 'error', signal: AbortSignal.timeout(15000),
     method: "POST",
     headers: { Authorization: `Basic ${basic}`, Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ numero: env.CORREIOS_POSTING_CARD, contrato: env.CORREIOS_CONTRACT, dr: Number(env.CORREIOS_DR) }),
@@ -36,10 +37,11 @@ async function correiosToken(env: Env) {
 }
 
 async function packageFor(env: Env, items: CartItem[]) {
+  if (!Array.isArray(items)||items.length>50) throw new Error('INVALID_CART');
   let weight = 0, width = 11, height = 2, length = 16;
   for (const item of items.slice(0, 50)) {
-    const quantity = Math.trunc(Number(item.quantity));
-    if (!item.product_id || !item.variant_id || quantity < 1 || quantity > 20) throw new Error("INVALID_CART");
+    const quantity = Number(item?.quantity);
+    if (!item?.product_id || !item.variant_id || !Number.isInteger(quantity) || quantity < 1 || quantity > 20) throw new Error("INVALID_CART");
     const row = await env.DB.prepare(`SELECT p.weight_grams,p.width_cm,p.height_cm,p.length_cm,v.stock
       FROM products p JOIN product_variants v ON v.product_id=p.id
       WHERE p.id=? AND v.id=? AND p.active=1 AND v.active=1`).bind(item.product_id, item.variant_id).first<PackageRow>();
@@ -55,6 +57,7 @@ async function packageFor(env: Env, items: CartItem[]) {
 async function correiosGet(env: Env, base: string, service: string, params: URLSearchParams) {
   const token = await correiosToken(env);
   const response = await fetch(`https://api.correios.com.br/${base}/v1/nacional/${encodeURIComponent(service)}?${params}`, {
+    redirect: 'error', signal: AbortSignal.timeout(15000),
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
   });
   const payload: Record<string, unknown> = await response.json<Record<string, unknown>>().catch(() => ({}));

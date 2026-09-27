@@ -4,7 +4,7 @@ import { apiError, json, readJson } from "./http";
 
 async function provider<T>(env:Env,path:string,body?:unknown):Promise<T>{
  if(!env.MERCADO_PAGO_ACCESS_TOKEN)throw new Error("Pagamento indisponível.");
- const response=await fetch("https://api.mercadopago.com"+path,{method:body?"POST":"GET",headers:{Authorization:"Bearer "+env.MERCADO_PAGO_ACCESS_TOKEN,"Content-Type":"application/json"},...(body?{body:JSON.stringify(body)}:{})});
+ const response=await fetch("https://api.mercadopago.com"+path,{redirect:'error',signal:AbortSignal.timeout(15000),method:body?"POST":"GET",headers:{Authorization:"Bearer "+env.MERCADO_PAGO_ACCESS_TOKEN,"Content-Type":"application/json"},...(body?{body:JSON.stringify(body)}:{})});
  if(!response.ok)throw new Error("Não foi possível consultar o Mercado Pago.");
  return response.json<T>();
 }
