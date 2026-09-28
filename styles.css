@@ -80,3 +80,9 @@ html,body{max-width:100%;overflow-x:hidden}@media(min-width:641px){.hero-content
 .shop-category-grid a{background:#071426;min-height:220px;border:1px solid rgba(198,163,86,.22)}
 .shop-category-grid a img{background:#050607}
 
+/* Keep product text inset while photographs retain the full card width. */
+.catalog-grid article>a,.product-grid article>a{display:block;padding-bottom:18px}
+.catalog-grid article h2,.product-grid article h3{margin-left:16px;margin-right:16px;overflow-wrap:anywhere}
+.catalog-grid article p,.product-grid article p{margin-left:16px;margin-right:16px}
+.catalog-grid article small,.product-grid article small{display:block;margin:6px 16px 0}
+
