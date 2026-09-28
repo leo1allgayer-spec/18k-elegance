@@ -27,9 +27,13 @@ export async function protectRequest(request: Request, env: Env): Promise<Respon
     return null;
   }
   const origin = request.headers.get('Origin');
-  // Fail closed: all browser mutations must present an exact same-origin Origin.
-  // Only independently signed server callbacks above are exempt.
-  if (origin !== url.origin || request.headers.get('Sec-Fetch-Site') === 'cross-site') return apiError('Origem inválida.',403);
+  // Some browsers omit Origin for a same-origin HTML form navigation. Permit only
+  // that narrow admin login case; programmatic and cross-site requests still fail closed.
+  const formNavigation = path === '/admin-login' && request.method === 'POST' && !origin
+    && request.headers.get('Sec-Fetch-Mode') === 'navigate'
+    && request.headers.get('Sec-Fetch-Dest') === 'document'
+    && request.headers.get('Sec-Fetch-Site') === 'same-origin';
+  if ((!formNavigation && origin !== url.origin) || request.headers.get('Sec-Fetch-Site') === 'cross-site') return apiError('Origem inválida.',403);
   const auth = path === '/admin-login' || path.startsWith('/api/auth/');
   const checkout = path === '/api/checkout/mercado-pago';
   const upload = path === '/api/personalization/upload' || /^\/api\/admin\/(?:products|categories)\/\d+\/image$/.test(path);

@@ -299,5 +299,14 @@ test('MFA pending enrollments expire and remain optional until confirmed',async(
  assert.ok((await createSession(env,1)).token);
  db.close();
 });
+test('same-origin admin form navigation without Origin is allowed, but forged requests are denied',async()=>{
+ const {db,env}=fixture();
+ const body=new URLSearchParams({email:'owner@example.test',password:'test'});
+ const allowed=new Request('https://elegance18k.com/admin-login',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Sec-Fetch-Site':'same-origin','Sec-Fetch-Mode':'navigate','Sec-Fetch-Dest':'document'},body});
+ assert.equal(await protectRequest(allowed,env),null);
+ const forged=new Request('https://elegance18k.com/admin-login',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Sec-Fetch-Site':'cross-site','Sec-Fetch-Mode':'navigate','Sec-Fetch-Dest':'document'},body:new URLSearchParams({email:'owner@example.test'})});
+ assert.equal((await protectRequest(forged,env)).status,403);
+ db.close();
+});
 
 
