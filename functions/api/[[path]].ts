@@ -1,3 +1,4 @@
+import { adminMfa, verifyAdminFactor, mfaEnabled } from "../_lib/admin-mfa";
 import type { Env } from "../_lib/types";
 import { apiError, json, normalizeEmail, readJson } from "../_lib/http";
 import { clearSessionCookie, createSession, currentCustomer, deleteCurrentSession, hashPassword, sessionCookie, sha256, verifyPassword, upgradePassword } from "../_lib/auth";
@@ -10,7 +11,7 @@ import { normalizeBrazilPhone, sendWhatsAppMessage, whatsappConfigured } from ".
 type RegisterBody = { name?: string; email?: string; phone?: string; birth_date?: string; password?: string };
 type AccountBody = { name?: string; phone?: string; birth_date?: string };
 type AddressBody = { postal_code?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string };
-type LoginBody = { email?: string; password?: string };
+type LoginBody = { otp?: string; email?: string; password?: string };
 type ForgotPasswordBody = { phone?: string };
 type ResetPasswordBody = { token?: string; password?: string };
 type RecoveryCartItem = {
@@ -406,8 +407,10 @@ async function login(request: Request, env: Env): Promise<Response> {
   if (!record || !body.password || !(await verifyPassword(body.password, String(record.password_salt), String(record.password_hash)))) {
     return apiError("E-mail ou senha incorretos.", 401, "INVALID_CREDENTIALS");
   }
+  const needsMfa = record.role === "admin" && await mfaEnabled(env, Number(record.id));
+  if (needsMfa && !await verifyAdminFactor(env, Number(record.id), body.otp)) return apiError("Entre pela área administrativa e informe o código do autenticador ou de recuperação.",401,"MFA_REQUIRED");
   await upgradePassword(env, Number(record.id), body.password, String(record.password_hash));
-  const session = await createSession(env, Number(record.id));
+  const session = await createSession(env, Number(record.id), needsMfa);
   const { password_hash, password_salt, ...customer } = record;
   return json({ ok: true, customer }, 200, { "Set-Cookie": sessionCookie(session.token, session.expiresAt) });
 }
@@ -568,6 +571,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (method === "PUT" && parts[1] === "products" && parts[2]) return saveProduct(request, env, integer(parts[2]));
     if (method === "DELETE" && parts[1] === "products" && parts[2]) return deleteProduct(env, integer(parts[2]));
     if (method === "POST" && parts[1] === "categories" && parts[3] === "image" && parts.length === 4) return uploadCategoryImage(request, env, Number(parts[2]));
+    if (parts[1] === "mfa" && parts.length === 3) return adminMfa(request, env, admin, parts[2]);
     if (method === "GET" && parts[1] === "categories") return adminCategories(env);
     if (method === "POST" && parts[1] === "categories" && !parts[2]) return saveCategory(request, env);
     if (method === "PUT" && parts[1] === "categories" && parts[2]) return saveCategory(request, env, integer(parts[2]));

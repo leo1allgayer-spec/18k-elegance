@@ -51,13 +51,14 @@ export async function sha256(value: string): Promise<string> {
   return toBase64(new Uint8Array(digest));
 }
 
-export async function createSession(env: Env, customerId: number): Promise<{ token: string; expiresAt: string }> {
+export async function createSession(env: Env, customerId: number, mfaVerified = false): Promise<{ token: string; expiresAt: string }> {
+  if (!mfaVerified && await env.DB.prepare("SELECT customer_id FROM admin_mfa WHERE customer_id=? AND enabled=1").bind(customerId).first()) throw new Error("MFA_REQUIRED");
   const token = toBase64(crypto.getRandomValues(new Uint8Array(32))).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
   const tokenHash = await sha256(token);
   const customer = await env.DB.prepare('SELECT role FROM customers WHERE id=?').bind(customerId).first<{role:string}>();
   const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * (customer?.role === 'admin' ? 8 : 24 * 30)).toISOString();
-  await env.DB.prepare("INSERT INTO sessions(customer_id, token_hash, expires_at) VALUES (?, ?, ?)")
-    .bind(customerId, tokenHash, expiresAt).run();
+  await env.DB.prepare("INSERT INTO sessions(customer_id, token_hash, expires_at, mfa_verified) VALUES (?, ?, ?, ?)")
+    .bind(customerId, tokenHash, expiresAt, mfaVerified ? 1 : 0).run();
   return { token, expiresAt };
 }
 
@@ -76,7 +77,8 @@ export async function currentCustomer(request: Request, env: Env): Promise<Sessi
   return env.DB.prepare(`SELECT c.id, c.name, c.email, c.phone, c.birth_date, c.role
     FROM sessions s JOIN customers c ON c.id = s.customer_id
     WHERE s.token_hash = ? AND datetime(s.expires_at) > CURRENT_TIMESTAMP AND c.active = 1
-    AND (c.role!='admin' OR datetime(s.created_at)>datetime('now','-8 hours'))`)
+    AND (c.role!='admin' OR datetime(s.created_at)>datetime('now','-8 hours'))
+    AND (s.mfa_verified=1 OR NOT EXISTS(SELECT 1 FROM admin_mfa m WHERE m.customer_id=c.id AND m.enabled=1))`)
     .bind(tokenHash).first<SessionCustomer>();
 }
 

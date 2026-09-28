@@ -48,7 +48,7 @@ const PUBLIC_PAGES: Record<string, { title: string; description: string; image?:
 };
 
 const NOINDEX_PATHS = new Set([
-  "/admin", "/admin-demo", "/conta", "/carrinho", "/checkout",
+  "/admin", "/admin-demo", "/admin-security", "/conta", "/carrinho", "/checkout",
   "/pagamento-retorno", "/rastreamento",
 ]);
 

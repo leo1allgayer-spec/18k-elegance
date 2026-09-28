@@ -2,7 +2,7 @@
   "name": "elegance-18k",
   "private": true,
   "scripts": {
-    "build": "node tools/build-site.cjs",
+    "build": "esbuild tools/admin-security-entry.js --bundle --minify --outfile=admin-security.js && node tools/build-site.cjs",
     "typecheck": "tsc --noEmit",
     "test:stock": "node --test tests/bling-stock.test.cjs",
     "test:security": "node --test tests/checkout-security.test.cjs",
@@ -11,6 +11,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260927.1",
     "esbuild": "^0.28.1",
+    "qrcode": "^1.5.4",
     "typescript": "latest",
     "wrangler": "4.141.0"
   }

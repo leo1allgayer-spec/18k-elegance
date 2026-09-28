@@ -1,3 +1,4 @@
+import { verifyAdminFactor, mfaEnabled } from "./_lib/admin-mfa";
 import type { Env } from "./_lib/types";
 import { createSession, sessionCookie, verifyPassword, upgradePassword } from "./_lib/auth";
 
@@ -22,8 +23,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     if (!record || record.role !== "admin" || !(await verifyPassword(password, String(record.password_salt), String(record.password_hash)))) {
       return redirect("/admin?erro=credenciais");
     }
+    const needsMfa = await mfaEnabled(env, Number(record.id));
+    if (needsMfa && !await verifyAdminFactor(env, Number(record.id), form.get("otp"))) return redirect("/admin?erro=mfa");
     await upgradePassword(env, Number(record.id), password, String(record.password_hash));
-    const session = await createSession(env, Number(record.id));
+    const session = await createSession(env, Number(record.id), needsMfa);
     return loginSuccess(sessionCookie(session.token, session.expiresAt));
   } catch (error) {
     console.error("Admin login error", error);

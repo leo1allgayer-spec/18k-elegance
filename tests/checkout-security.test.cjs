@@ -16,7 +16,7 @@ const {securityHeaders,privatePath}=require('../functions/_lib/security-headers.
 const {readBoundedBody}=require('../functions/_lib/http.ts');
 function fixture(){
  const db=new DatabaseSync(':memory:');
- for(const file of ['0001_initial','0003_product_personalization','0004_product_personalizable','0008_customer_accounts_first_purchase','0009_product_details_and_personalization','0011_gift_card_checkout','0012_whatsapp_recovery','0018_checkout_security','0019_security_hardening','0020_category_images']){
+ for(const file of ['0001_initial','0003_product_personalization','0004_product_personalizable','0008_customer_accounts_first_purchase','0009_product_details_and_personalization','0011_gift_card_checkout','0012_whatsapp_recovery','0018_checkout_security','0019_security_hardening','0020_category_images','0021_admin_mfa']){
   db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations',file+'.sql'),'utf8'));
  }
  db.exec(`INSERT INTO customers(id,name,email,phone,password_hash,password_salt,account_claimed) VALUES(1,'Original','owner@example.test','51999990000','unchanged','unchanged',0);
@@ -241,4 +241,63 @@ test('category images require admin, validate files, persist and can be removed'
  assert.equal(objects.size,1);
  db.close();
 });
+test('TOTP follows RFC 6238 SHA-1 vectors',async()=>{
+ const {totp,base32,matchStep}=require('../functions/_lib/totp.ts');
+ const secret=base32(new TextEncoder().encode('12345678901234567890'));
+ for(const [time,expected] of [[59,'94287082'],[1111111109,'07081804'],[1111111111,'14050471'],[1234567890,'89005924'],[2000000000,'69279037'],[20000000000,'65353130']])assert.equal(await totp(secret,Math.floor(time/30),8),expected);
+ assert.equal(await matchStep(secret,'287082',59000),1);
+ assert.equal(await matchStep(secret,'nototp',59000),null);
+});
+test('MFA enrollment, both login routes, replay, recovery and session revocation',async()=>{
+ const {db,env}=fixture();env.MFA_ENCRYPTION_KEY='ab'.repeat(32);
+ const {totp}=require('../functions/_lib/totp.ts');
+ const {onRequestPost:formLogin}=require('../functions/admin-login.ts');
+ const password='Test-only-password-2026!';
+ const hashed=await hashPassword(password);
+ db.prepare("UPDATE customers SET role='admin',password_hash=?,password_salt=? WHERE id=1").run(hashed.hash,hashed.salt);
+ const session=await createSession(env,1),cookie='elegance_session='+session.token;
+ const call=(action,body)=>onRequest({env,request:req('/api/admin/mfa/'+action,body,{Cookie:cookie})});
+ const setup=await call('setup',{password});assert.equal(setup.status,200);
+ const data=await setup.json();assert.equal(data.recovery_codes.length,10);
+ assert.ok(!db.prepare('SELECT secret FROM admin_mfa').get().secret.includes(data.secret));
+ assert.equal(db.prepare('SELECT code_hash FROM admin_recovery_codes').get().code_hash.length,44);
+ const bad=await call('confirm',{code:'invalid'});assert.equal(bad.status,400);
+ assert.equal(db.prepare('SELECT enabled FROM admin_mfa').get().enabled,0);
+ const step=Math.floor(Date.now()/30000),otp=await totp(data.secret,step);
+ assert.equal((await call('confirm',{code:otp})).status,200);
+ assert.equal(await currentCustomer(new Request('https://elegance18k.com/api/auth/me',{headers:{Cookie:cookie}}),env),null);
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM sessions').get().n,0);
+ await assert.rejects(()=>createSession(env,1),/MFA_REQUIRED/);
+ const loginBody={email:'owner@example.test',password};
+ assert.equal((await onRequest({env,request:req('/api/auth/login',loginBody)})).status,401);
+ const form=(code='')=>formLogin({env,request:new Request('https://elegance18k.com/admin-login',{method:'POST',body:new URLSearchParams({...loginBody,otp:code})})});
+ assert.match((await form()).headers.get('location'),/erro=mfa/);
+ assert.equal((await onRequest({env,request:req('/api/auth/login',{...loginBody,otp})})).status,401);
+ // Next time window is accepted once; the same factor cannot create two sessions.
+ const next=await totp(data.secret,step+1);
+ const ok=await onRequest({env,request:req('/api/auth/login',{...loginBody,otp:next})});
+ assert.equal(ok.status,200);assert.ok(ok.headers.get('set-cookie'));
+ assert.equal((await onRequest({env,request:req('/api/auth/login',{...loginBody,otp:next})})).status,401);
+ assert.equal((await form(data.recovery_codes[0])).status,200);
+ assert.match((await form(data.recovery_codes[0])).headers.get('location'),/erro=mfa/);
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM admin_recovery_codes').get().n,9);
+ assert.equal(db.prepare('SELECT MIN(mfa_verified) n FROM sessions').get().n,1);
+ assert.equal((await call('setup',{password})).status,403);
+ db.close();
+});
+test('MFA pending enrollments expire and remain optional until confirmed',async()=>{
+ const {db,env}=fixture();env.MFA_ENCRYPTION_KEY='cd'.repeat(32);
+ const {adminMfa}=require('../functions/_lib/admin-mfa.ts'),{totp}=require('../functions/_lib/totp.ts');
+ const password='Test-only-password-2026!',hashed=await hashPassword(password);
+ db.prepare("UPDATE customers SET role='admin',password_hash=?,password_salt=? WHERE id=1").run(hashed.hash,hashed.salt);
+ const customer={id:1,email:'owner@example.test',role:'admin'};
+ const response=await adminMfa(req('/api/admin/mfa/setup',{password}),env,customer,'setup');
+ const data=await response.json();
+ db.exec("UPDATE admin_mfa SET expires_at='2000-01-01'");
+ const otp=await totp(data.secret,Math.floor(Date.now()/30000));
+ assert.equal((await adminMfa(req('/api/admin/mfa/confirm',{code:otp}),env,customer,'confirm')).status,400);
+ assert.ok((await createSession(env,1)).token);
+ db.close();
+});
+
 
