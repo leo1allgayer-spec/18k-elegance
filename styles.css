@@ -77,3 +77,6 @@ html,body{max-width:100%;overflow-x:hidden}@media(min-width:641px){.hero-content
 @media(prefers-reduced-motion:reduce){.announcement-track{animation:none}.announcement-item:not(:first-child){display:none}}
 
 .account-link svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6}.account-link.logged-in{border-color:#b6914a66!important;color:#d1b77f!important}
+.shop-category-grid a{background:#071426;min-height:220px;border:1px solid rgba(198,163,86,.22)}
+.shop-category-grid a img{background:#050607}
+

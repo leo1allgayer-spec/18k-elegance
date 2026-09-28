@@ -28,7 +28,9 @@ type ProductBody = {
   engraving_text_enabled?: boolean; engraving_text_price_cents?: number;
   engraving_image_enabled?: boolean; engraving_image_price_cents?: number;
 };
-type CategoryBody = { name?: string; description?: string; sort_order?: number; active?: boolean };
+import { uploadCategoryImage, publicCategoryImage } from "../_lib/category-images";
+
+type CategoryBody = { remove_image?: boolean; name?: string; description?: string; sort_order?: number; active?: boolean };
 type CouponBody = { code?: string; type?: "percent" | "fixed"; value?: number; minimum_cents?: number; starts_at?: string | null; expires_at?: string | null; max_uses?: number | null; active?: boolean };
 
 const slugify = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -106,7 +108,7 @@ async function adminProducts(env: Env): Promise<Response> {
 }
 
 async function adminCategories(env: Env): Promise<Response> {
-  const result = await env.DB.prepare(`SELECT c.id, c.name, c.slug, c.description, c.sort_order, c.active,
+  const result = await env.DB.prepare(`SELECT c.id, c.name, c.slug, c.description, c.sort_order, c.active, c.image_url,
     COUNT(p.id) AS product_count FROM categories c LEFT JOIN products p ON p.category_id = c.id
     GROUP BY c.id ORDER BY c.sort_order, c.name`).all();
   return json({ ok: true, categories: result.results });
@@ -200,8 +202,8 @@ async function saveCategory(request: Request, env: Env, id?: number): Promise<Re
   if (name.length < 2) return apiError("Informe o nome da categoria.");
   const slug = await uniqueSlug(env, "categories", name, id);
   if (id) {
-    const result = await env.DB.prepare("UPDATE categories SET name=?,slug=?,description=?,sort_order=?,active=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
-      .bind(name, slug, body.description?.trim() || null, integer(body.sort_order), flag(body.active), id).run();
+    const result = await env.DB.prepare("UPDATE categories SET name=?,slug=?,description=?,sort_order=?,active=?,image_url=CASE WHEN ? THEN NULL ELSE image_url END,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+      .bind(name, slug, body.description?.trim() || null, integer(body.sort_order), flag(body.active), body.remove_image === true ? 1 : 0, id).run();
     return result.meta.changes ? json({ ok: true, id, slug }) : apiError("Categoria não encontrada.", 404, "NOT_FOUND");
   }
   const result = await env.DB.prepare("INSERT INTO categories(name,slug,description,sort_order,active) VALUES(?,?,?,?,?)")
@@ -295,8 +297,8 @@ function pathParts(request: Request): string[] {
 }
 
 async function categories(env: Env): Promise<Response> {
-  const result = await env.DB.prepare("SELECT id, name, slug, description FROM categories WHERE active = 1 ORDER BY sort_order, name").all();
-  return json({ ok: true, categories: result.results }, 200, { "Cache-Control": "public, max-age=300" });
+  const result = await env.DB.prepare("SELECT id, name, slug, description, image_url FROM categories WHERE active = 1 ORDER BY sort_order, name").all();
+  return json({ ok: true, categories: result.results }, 200, { "Cache-Control": "no-cache" });
 }
 
 async function products(request: Request, env: Env): Promise<Response> {
@@ -526,6 +528,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (method === "POST" && parts.join("/") === "checkout/mercado-pago") return createMercadoPagoCheckout(request, env);
   if (method === "POST" && parts.join("/") === "coupons/validate") return validateCartCoupon(request, env);
   if (method === "POST" && parts.join("/") === "personalization/upload") return uploadPersonalization(request, env);
+  if (method === "GET" && parts[0] === "category-images" && parts.length === 3) return publicCategoryImage(env, Number(parts[1]), parts[2]);
   if (method === "GET" && parts[0] === "product-images" && parts[1] && parts[2]) return publicProductImage(env, integer(parts[1]), parts[2]);
   if (method === "POST" && parts.join("/") === "shipping/correios/quote") return publicCorreiosQuote(request, env);
   if (method === "POST" && parts.join("/") === "payments/mercado-pago/webhook") return mercadoPagoWebhook(request, env);
@@ -564,6 +567,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (method === "POST" && parts[1] === "products" && parts[2] && parts[3] === "image") return uploadProductImage(request, env, integer(parts[2]));
     if (method === "PUT" && parts[1] === "products" && parts[2]) return saveProduct(request, env, integer(parts[2]));
     if (method === "DELETE" && parts[1] === "products" && parts[2]) return deleteProduct(env, integer(parts[2]));
+    if (method === "POST" && parts[1] === "categories" && parts[3] === "image" && parts.length === 4) return uploadCategoryImage(request, env, Number(parts[2]));
     if (method === "GET" && parts[1] === "categories") return adminCategories(env);
     if (method === "POST" && parts[1] === "categories" && !parts[2]) return saveCategory(request, env);
     if (method === "PUT" && parts[1] === "categories" && parts[2]) return saveCategory(request, env, integer(parts[2]));

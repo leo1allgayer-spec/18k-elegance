@@ -116,5 +116,14 @@
       enableProductShipping(product,variant);
     }catch(error){console.warn('Produto usando conteúdo de apresentação.',error)}
   }
-  catalog();featured();detail();
+  async function homeCategories(){
+    const grid=document.querySelector('.shop-category-grid');
+    if(!grid)return;
+    try{
+      const data=await api('categories');
+      grid.innerHTML=data.categories.map(category=>'<a href="catalogo.html?categoria='+encodeURIComponent(category.slug)+'">'+(category.image_url?'<img src="'+esc(category.image_url)+'" alt="'+esc(category.name)+'" loading="lazy" decoding="async">':'')+'<span>'+esc(category.name)+'</span></a>').join('');
+      grid.querySelectorAll('img').forEach(img=>img.addEventListener('error',()=>img.remove(),{once:true}));
+    }catch(error){console.warn('Não foi possível carregar as imagens das categorias.',error)}
+  }
+  homeCategories();catalog();featured();detail();
 })();

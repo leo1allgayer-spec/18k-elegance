@@ -16,7 +16,7 @@ const {securityHeaders,privatePath}=require('../functions/_lib/security-headers.
 const {readBoundedBody}=require('../functions/_lib/http.ts');
 function fixture(){
  const db=new DatabaseSync(':memory:');
- for(const file of ['0001_initial','0003_product_personalization','0004_product_personalizable','0008_customer_accounts_first_purchase','0009_product_details_and_personalization','0011_gift_card_checkout','0012_whatsapp_recovery','0018_checkout_security','0019_security_hardening']){
+ for(const file of ['0001_initial','0003_product_personalization','0004_product_personalizable','0008_customer_accounts_first_purchase','0009_product_details_and_personalization','0011_gift_card_checkout','0012_whatsapp_recovery','0018_checkout_security','0019_security_hardening','0020_category_images']){
   db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations',file+'.sql'),'utf8'));
  }
  db.exec(`INSERT INTO customers(id,name,email,phone,password_hash,password_salt,account_claimed) VALUES(1,'Original','owner@example.test','51999990000','unchanged','unchanged',0);
@@ -207,3 +207,38 @@ test('checkout rejects fractional quantities and unknown shipping methods',async
  assert.equal((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,400);
  assert.equal(db.prepare('SELECT COUNT(*) n FROM orders').get().n,0);db.close();
 });
+test('category images require admin, validate files, persist and can be removed',async()=>{
+ const {db,env}=fixture();
+ db.exec("INSERT INTO categories(id,name,slug) VALUES(90,'Test category','test-category')");
+ const objects=new Map();
+ env.PERSONALIZATION_BUCKET={
+  async put(key,stream,options){objects.set(key,{body:await new Response(stream).arrayBuffer(),httpEtag:'test',writeHttpMetadata(headers){headers.set('Content-Type',options.httpMetadata.contentType)}})},
+  async get(key){return objects.get(key)||null},
+  async delete(key){objects.delete(key)}
+ };
+ const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64');
+ const upload=(cookie='',bytes=png)=>{const form=new FormData();form.set('image',new File([bytes],'photo.png',{type:'image/png'}));return new Request('https://elegance18k.com/api/admin/categories/90/image',{method:'POST',headers:{Origin:'https://elegance18k.com',Cookie:cookie},body:form})};
+ assert.equal((await onRequest({env,request:upload()})).status,403);
+ db.exec("UPDATE customers SET role='admin' WHERE id=1");
+ const token=await createSession(env,1);
+ const cookie='elegance_session='+token.token;
+ const bad=await onRequest({env,request:upload(cookie,Buffer.from('not an image'))});
+ assert.equal(bad.status,400);
+ const good=await onRequest({env,request:upload(cookie)});
+ assert.equal(good.status,201);
+ const url=(await good.json()).image.url;
+ assert.match(url,/^\/api\/category-images\/90\//);
+ assert.equal(db.prepare('SELECT image_url FROM categories WHERE id=90').get().image_url,url);
+ const publicImage=await onRequest({env,request:new Request('https://elegance18k.com'+url)});
+ assert.equal(publicImage.status,200);assert.equal(publicImage.headers.get('content-type'),'image/png');
+ const update=(remove)=>new Request('https://elegance18k.com/api/admin/categories/90',{method:'PUT',headers:{Origin:'https://elegance18k.com',Cookie:cookie,'Content-Type':'application/json'},body:JSON.stringify({name:'Test category',remove_image:remove})});
+ assert.equal((await onRequest({env,request:update(false)})).status,200);
+ assert.equal(db.prepare('SELECT image_url FROM categories WHERE id=90').get().image_url,url);
+ assert.equal((await onRequest({env,request:update(true)})).status,200);
+ assert.equal(db.prepare('SELECT image_url FROM categories WHERE id=90').get().image_url,null);
+ const listing=await onRequest({env,request:new Request('https://elegance18k.com/api/categories')});
+ assert.equal((await listing.json()).categories.find(c=>c.id===90).image_url,null);
+ assert.equal(objects.size,1);
+ db.close();
+});
+

@@ -32,7 +32,7 @@ export async function protectRequest(request: Request, env: Env): Promise<Respon
   if (origin !== url.origin || request.headers.get('Sec-Fetch-Site') === 'cross-site') return apiError('Origem inválida.',403);
   const auth = path === '/admin-login' || path.startsWith('/api/auth/');
   const checkout = path === '/api/checkout/mercado-pago';
-  const upload = path === '/api/personalization/upload' || /^\/api\/admin\/products\/\d+\/image$/.test(path);
+  const upload = path === '/api/personalization/upload' || /^\/api\/admin\/(?:products|categories)\/\d+\/image$/.test(path);
   if (!auth && !checkout) {
     const group = upload ? 'upload' : path.startsWith('/api/admin/') ? 'admin-write' : path;
     const limit = upload ? 20 : path === '/api/cart-recovery' ? 5 : path.startsWith('/api/reviews/') ? 15 : 90;
