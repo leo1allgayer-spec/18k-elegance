@@ -27,11 +27,12 @@ export async function protectRequest(request: Request, env: Env): Promise<Respon
     return null;
   }
   const origin = request.headers.get('Origin');
-  // Legacy and embedded browsers can omit both Origin and Sec-Fetch headers on a
-  // native same-origin form POST. The admin login is the sole compatibility
-  // exception: reject any supplied foreign Origin and every marked cross-site POST.
-  const nativeAdminLogin = path === '/admin-login' && request.method === 'POST' && !origin;
-  if ((origin && origin !== url.origin) || (!origin && !nativeAdminLogin) || request.headers.get('Sec-Fetch-Site') === 'cross-site') return apiError('Origem inválida.',403);
+  // This route only establishes a session after a password check and is throttled
+  // below. Exempt it from origin metadata because embedded browsers can send
+  // Origin: null or a stale host for a regular HTML form submission. Every other
+  // mutation remains exact-origin only.
+  const adminFormLogin = path === '/admin-login' && request.method === 'POST';
+  if (!adminFormLogin && (origin !== url.origin || request.headers.get('Sec-Fetch-Site') === 'cross-site')) return apiError('Origem inválida.',403);
   const auth = path === '/admin-login' || path.startsWith('/api/auth/');
   const checkout = path === '/api/checkout/mercado-pago';
   const upload = path === '/api/personalization/upload' || /^\/api\/admin\/(?:products|categories)\/\d+\/image$/.test(path);
