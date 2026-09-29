@@ -246,6 +246,28 @@ async function updateOrder(request: Request, env: Env, id: number): Promise<Resp
   return result.meta.changes ? json({ ok: true }) : apiError("Pedido não encontrado.", 404, "NOT_FOUND");
 }
 
+async function deleteTestOrder(env: Env, id: number): Promise<Response> {
+  const order = await env.DB.prepare("SELECT status FROM orders WHERE id=?").bind(id).first<{ status: string }>();
+  if (!order) return apiError("Pedido não encontrado.", 404, "NOT_FOUND");
+  if (!["pending_payment", "cancelled"].includes(order.status)) {
+    return apiError("Somente pedidos pendentes ou cancelados podem ser excluídos. Pedidos pagos devem ser mantidos para auditoria.", 409, "ORDER_NOT_REMOVABLE");
+  }
+  const giftUse = await env.DB.prepare("SELECT status FROM gift_card_uses WHERE order_id=?").bind(id).first<{ status: string }>();
+  if (giftUse?.status === "spent") return apiError("Este pedido usou um cartão-presente concluído e não pode ser excluído.", 409, "ORDER_NOT_REMOVABLE");
+  await env.DB.batch([
+    env.DB.prepare("UPDATE stock_reservations SET status='released' WHERE order_id=? AND status='held'").bind(id),
+    env.DB.prepare("UPDATE gift_card_uses SET status='released' WHERE order_id=? AND status='reserved'").bind(id),
+    env.DB.prepare("DELETE FROM payments WHERE order_id=?").bind(id),
+    env.DB.prepare("DELETE FROM checkout_security WHERE order_id=?").bind(id),
+    env.DB.prepare("DELETE FROM stock_reservations WHERE order_id=?").bind(id),
+    env.DB.prepare("DELETE FROM gift_card_uses WHERE order_id=?").bind(id),
+    env.DB.prepare("UPDATE personalization_uploads SET order_id=NULL WHERE order_id=?").bind(id),
+    env.DB.prepare("DELETE FROM order_items WHERE order_id=?").bind(id),
+    env.DB.prepare("DELETE FROM orders WHERE id=?").bind(id),
+  ]);
+  return json({ ok: true });
+}
+
 async function adminOrders(env: Env): Promise<Response> {
   const result = await env.DB.prepare(`SELECT o.id, o.order_number, o.status, o.total_cents, o.shipping_method,
     o.tracking_code, o.created_at, c.name AS customer_name, c.email AS customer_email
@@ -579,6 +601,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (method === "GET" && parts[1] === "personalization" && parts[2]) return adminPersonalizationImage(env, parts[2]);
     if (method === "GET" && parts[1] === "orders") return adminOrders(env);
     if (method === "PATCH" && parts[1] === "orders" && parts[2]) return updateOrder(request, env, integer(parts[2]));
+    if (method === "DELETE" && parts[1] === "orders" && parts[2]) return deleteTestOrder(env, integer(parts[2]));
     if (method === "GET" && parts[1] === "customers") return adminCustomers(env);
     if (method === "PUT" && parts[1] === "customers" && parts.length === 3) return updateAdminCustomer(request, env, integer(parts[2]));
     if (method === "GET" && parts[1] === "coupons") return adminCoupons(env);
