@@ -282,6 +282,10 @@ test('MFA enrollment, both login routes, replay, recovery and session revocation
  assert.match((await form(data.recovery_codes[0])).headers.get('location'),/erro=mfa/);
  assert.equal(db.prepare('SELECT COUNT(*) n FROM admin_recovery_codes').get().n,9);
  assert.equal(db.prepare('SELECT MIN(mfa_verified) n FROM sessions').get().n,1);
+ const admin={id:1,email:'owner@example.test',role:'admin'};
+ const addDevice=await require('../functions/_lib/admin-mfa.ts').adminMfa(req('/api/admin/mfa/add-device',{password,code:data.recovery_codes[1]}),env,admin,'add-device');
+ assert.equal(addDevice.status,200);const device=await addDevice.json();assert.equal(device.secret,data.secret);assert.match(device.uri,/otpauth:\/\/totp\//);
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM admin_recovery_codes').get().n,8);
  assert.equal((await call('setup',{password})).status,403);
  db.close();
 });

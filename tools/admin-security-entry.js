@@ -17,4 +17,11 @@ $('#confirm').addEventListener('submit',event=>{event.preventDefault();void subm
  $('#enrollment').hidden=true;$('#secret').textContent='';$('#recovery').textContent='';$('#qr').getContext('2d').clearRect(0,0,$('#qr').width,$('#qr').height);
  $('#status').textContent='Verificação em duas etapas ativada! Aguarde o próximo código do aplicativo e entre novamente.';$('#login').hidden=false;
 })});
-api('status').then(data=>{if(data.enabled){$('#status').textContent='A verificação em duas etapas está ativa para esta conta.'}else if(!data.configured){$('#status').textContent='A configuração do servidor ainda está pendente.'}else{$('#status').textContent='Proteja o acesso à sua conta administrativa.';$('#setup').hidden=false}}).catch(()=>{$('#status').textContent='Entre no painel com sua conta administrativa para configurar.';$('#login').hidden=false});
+$('#device-form').addEventListener('submit',event=>{event.preventDefault();void submit(event.currentTarget,async()=>{
+ const password=$('[name=device_password]').value,code=$('[name=device_code]').value;
+ $('[name=device_password]').value='';$('[name=device_code]').value='';
+ const data=await api('add-device',{password,code});
+ await QRCode.toCanvas($('#device-qr'),data.uri,{width:280,margin:4,errorCorrectionLevel:'M'});
+ $('#device-secret').textContent=data.secret;$('#device-enrollment').hidden=false;
+})});
+api('status').then(data=>{if(data.enabled){$('#status').textContent='A verificação em duas etapas está ativa para esta conta.';$('#additional-device').hidden=false}else if(!data.configured){$('#status').textContent='A configuração do servidor ainda está pendente.'}else{$('#status').textContent='Proteja o acesso à sua conta administrativa.';$('#setup').hidden=false}}).catch(()=>{$('#status').textContent='Entre no painel com sua conta administrativa para configurar.';$('#login').hidden=false});

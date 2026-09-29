@@ -41,10 +41,19 @@ export async function verifyAdminFactor(env:Env,id:number,input:unknown):Promise
 export async function adminMfa(request:Request,env:Env,customer:SessionCustomer,action:string):Promise<Response>{
   const id=customer.id;
   if(request.method==='GET'&&action==='status')return json({ok:true,enabled:await mfaEnabled(env,id),configured:!!env.MFA_ENCRYPTION_KEY});
-  if(request.method!=='POST'||!['setup','confirm'].includes(action))return apiError('Não encontrado.',404);
+  if(request.method!=='POST'||!['setup','confirm','add-device'].includes(action))return apiError('Não encontrado.',404);
   if(!await consumeLimit(env,`mfa-setup:${id}`,8))return apiError('Muitas tentativas. Aguarde 15 minutos.',429);
-  if(await mfaEnabled(env,id))return apiError('A autenticação em duas etapas já está ativa.',409);
   const body=await readJson<{password?:string;code?:string}>(request);
+  if(action==='add-device'){
+    const row=await env.DB.prepare('SELECT * FROM admin_mfa WHERE customer_id=? AND enabled=1').bind(id).first<Mfa>();
+    if(!row)return apiError('Ative a autenticação em duas etapas antes de vincular outro aparelho.',400);
+    const record=await env.DB.prepare('SELECT password_hash,password_salt FROM customers WHERE id=?').bind(id).first<{password_hash:string;password_salt:string}>();
+    if(!record||typeof body.password!=='string'||!await verifyPassword(body.password,record.password_salt,record.password_hash))return apiError('Senha incorreta.',401);
+    if(!await verifyAdminFactor(env,id,body.code))return apiError('Código do autenticador ou de recuperação inválido.',400);
+    const secret=await decrypt(env,id,row.secret),issuer='Elegance 18K';
+    return json({ok:true,secret,uri:`otpauth://totp/${encodeURIComponent(issuer+':'+customer.email)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`});
+  }
+  if(await mfaEnabled(env,id))return apiError('A autenticação em duas etapas já está ativa.',409);
   if(action==='setup'){
     const record=await env.DB.prepare('SELECT password_hash,password_salt FROM customers WHERE id=?').bind(id).first<{password_hash:string;password_salt:string}>();
     if(!record||typeof body.password!=='string'||!await verifyPassword(body.password,record.password_salt,record.password_hash))return apiError('Senha incorreta.',401);
