@@ -26,7 +26,7 @@ type ProductBody = {
   image_url?: string; active?: boolean; featured?: boolean; personalizable?: boolean; finish?: string;
   weight_grams?: number; width_cm?: number; height_cm?: number; length_cm?: number;
   piece_length?: string; material?: string; coating?: string; warranty_months?: number;
-  engraving_text_enabled?: boolean; engraving_text_price_cents?: number;
+  engraving_text_enabled?: boolean; engraving_text_required?: boolean; engraving_text_price_cents?: number;
   engraving_image_enabled?: boolean; engraving_image_price_cents?: number;
 };
 import { uploadCategoryImage, publicCategoryImage } from "../_lib/category-images";
@@ -97,7 +97,7 @@ async function adminDashboard(env: Env): Promise<Response> {
 async function adminProducts(env: Env): Promise<Response> {
   const result = await env.DB.prepare(`SELECT p.id, p.name, p.category_id, p.sku, p.description, p.price_cents, p.pix_price_cents,
     p.weight_grams, p.width_cm, p.height_cm, p.length_cm, p.piece_length, p.material, p.coating, p.warranty_months,
-    p.engraving_text_enabled, p.engraving_text_price_cents, p.engraving_image_enabled, p.engraving_image_price_cents,
+    p.engraving_text_enabled, p.engraving_text_required, p.engraving_text_price_cents, p.engraving_image_enabled, p.engraving_image_price_cents,
     p.active, p.featured, p.personalizable, c.name AS category_name,
     (SELECT finish FROM product_variants WHERE product_id=p.id ORDER BY id LIMIT 1) AS finish,
     (SELECT url FROM product_images WHERE product_id = p.id ORDER BY sort_order, id LIMIT 1) AS image_url,
@@ -160,7 +160,7 @@ async function saveProduct(request: Request, env: Env, id?: number): Promise<Res
   const values = [body.category_id ? integer(body.category_id) : null, name, slug, sku, body.description?.trim() || null,
     price, body.pix_price_cents == null ? null : integer(body.pix_price_cents), integer(body.weight_grams), Number(body.width_cm) || 0,
     Number(body.height_cm) || 0, Number(body.length_cm) || 0, body.piece_length?.trim() || null, body.material?.trim() || null,
-    body.coating?.trim() || null, Math.max(0, integer(body.warranty_months, 12)), flag(body.engraving_text_enabled, false),
+    body.coating?.trim() || null, Math.max(0, integer(body.warranty_months, 12)), flag(body.engraving_text_enabled, false), flag(body.engraving_text_required, false),
     Math.max(0, integer(body.engraving_text_price_cents, 2990)), flag(body.engraving_image_enabled, false),
     Math.max(0, integer(body.engraving_image_price_cents, 4990)), flag(body.featured, false),
     flag(Boolean(body.personalizable || body.engraving_text_enabled || body.engraving_image_enabled), false), flag(body.active)];
@@ -170,13 +170,13 @@ async function saveProduct(request: Request, env: Env, id?: number): Promise<Res
     if (!exists) return apiError("Produto não encontrado.", 404, "NOT_FOUND");
     await env.DB.prepare(`UPDATE products SET category_id=?, name=?, slug=?, sku=?, description=?, price_cents=?, pix_price_cents=?,
       weight_grams=?, width_cm=?, height_cm=?, length_cm=?, piece_length=?, material=?, coating=?, warranty_months=?,
-      engraving_text_enabled=?, engraving_text_price_cents=?, engraving_image_enabled=?, engraving_image_price_cents=?,
+      engraving_text_enabled=?, engraving_text_required=?, engraving_text_price_cents=?, engraving_image_enabled=?, engraving_image_price_cents=?,
       featured=?, personalizable=?, active=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(...values, id).run();
   } else {
     const result = await env.DB.prepare(`INSERT INTO products(category_id,name,slug,sku,description,price_cents,pix_price_cents,
-      weight_grams,width_cm,height_cm,length_cm,piece_length,material,coating,warranty_months,engraving_text_enabled,
+      weight_grams,width_cm,height_cm,length_cm,piece_length,material,coating,warranty_months,engraving_text_enabled,engraving_text_required,
       engraving_text_price_cents,engraving_image_enabled,engraving_image_price_cents,featured,personalizable,active)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(...values).run();
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(...values).run();
     productId = Number(result.meta.last_row_id);
   }
   const variant = await env.DB.prepare("SELECT id FROM product_variants WHERE product_id = ? ORDER BY id LIMIT 1").bind(productId).first<{id:number}>();

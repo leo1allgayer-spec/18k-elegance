@@ -181,6 +181,13 @@ document.querySelector(".add-cart")?.addEventListener("click", (event) => {
   const button = event.currentTarget;
   const qty = Number(document.querySelector(".quantity span")?.textContent || 1);
   const engravingText = document.querySelector("#engraving-text")?.value.trim() || "";
+  if (button.dataset.engravingTextRequired === "true" && !engravingText) {
+    const panel = document.querySelector(".photo-personalization");
+    if (panel) panel.open = true;
+    personalizationMessage.textContent = "Preencha nome, peso, altura, data e hora do nascimento para continuar.";
+    document.querySelector("#engraving-text")?.focus();
+    return;
+  }
   if (button.dataset.personalizable === "true" && personalizationInput?.files?.length && !personalizationUpload) {
     personalizationMessage.textContent = "Aguarde a conclusão do envio da imagem."; return;
   }
@@ -204,6 +211,17 @@ document.querySelector(".add-cart")?.addEventListener("click", (event) => {
   document.dispatchEvent(new CustomEvent('elegance:cart-added'));
   setTimeout(() => { button.textContent = "Adicionar à sacola"; }, 1800);
 });
+
+if ("IntersectionObserver" in window) {
+  const revealObserver = new IntersectionObserver((entries, observer) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      entry.target.classList.add("is-visible");
+      observer.unobserve(entry.target);
+    });
+  }, { threshold: 0.16 });
+  document.querySelectorAll(".reveal-section").forEach((section) => revealObserver.observe(section));
+} else document.querySelectorAll(".reveal-section").forEach((section) => section.classList.add("is-visible"));
 
 function renderCart() {
   const container = document.querySelector("#cart-items");

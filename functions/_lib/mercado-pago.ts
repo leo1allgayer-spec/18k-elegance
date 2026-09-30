@@ -23,7 +23,7 @@ type CheckoutBody = {
 type ProductRow = {
   product_id: number; variant_id: number; name: string; sku: string;
   unit_price_cents: number; stock: number; category_slug: string | null; personalizable: number;
-  engraving_text_enabled: number; engraving_text_price_cents: number; engraving_image_enabled: number; engraving_image_price_cents: number;
+  engraving_text_enabled: number; engraving_text_required: number; engraving_text_price_cents: number; engraving_image_enabled: number; engraving_image_price_cents: number;
   personalization_json: string | null; personalization_fee_cents: number; image_upload_id: string | null;
 };
 
@@ -96,7 +96,7 @@ async function resolveItems(env: Env, items: CheckoutItem[], owner: string): Pro
     }
     const row = await env.DB.prepare(`SELECT p.id AS product_id, v.id AS variant_id, p.name, v.sku,
       COALESCE(v.price_cents,p.price_cents) AS unit_price_cents, v.stock, c.slug AS category_slug, p.personalizable,
-      p.engraving_text_enabled, p.engraving_text_price_cents, p.engraving_image_enabled, p.engraving_image_price_cents
+      p.engraving_text_enabled, p.engraving_text_required, p.engraving_text_price_cents, p.engraving_image_enabled, p.engraving_image_price_cents
       FROM products p JOIN product_variants v ON v.product_id=p.id LEFT JOIN categories c ON c.id=p.category_id
       WHERE p.id=? AND v.id=? AND p.active=1 AND v.active=1`).bind(item.product_id, item.variant_id).first<ProductRow>();
     if (!row || row.stock < quantity) throw new Error("OUT_OF_STOCK");
@@ -107,6 +107,7 @@ async function resolveItems(env: Env, items: CheckoutItem[], owner: string): Pro
     if (allowedSizes.length && !allowedSizes.includes(size)) throw new Error("INVALID_SIZE");
     if (!allowedSizes.length && size) throw new Error("INVALID_SIZE");
     if (engravingText && !row.engraving_text_enabled) throw new Error("INVALID_PERSONALIZATION_TEXT");
+    if (row.engraving_text_required && !engravingText) throw new Error("REQUIRED_PERSONALIZATION_TEXT");
     if (imageUploadId && !row.engraving_image_enabled) throw new Error("INVALID_PERSONALIZATION_IMAGE");
     if (engravingText.length > 80) throw new Error("INVALID_PERSONALIZATION");
     if (imageUploadId) {
@@ -175,6 +176,7 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
   catch (error) {
     const code = error instanceof Error ? error.message : "INVALID_CART";
     if (code === "OUT_OF_STOCK") return apiError("Um produto ficou sem estoque. Atualize a sacola.", 409, code);
+    if (code === "REQUIRED_PERSONALIZATION_TEXT") return apiError("Preencha os dados obrigatórios da personalização antes de finalizar.", 400, code);
     if (code.startsWith("INVALID_PERSONALIZATION")) return apiError("Revise os dados da fotogravação.", 400, code);
     return apiError("A sacola contém itens inválidos.", 400, 'INVALID_CART');
   }

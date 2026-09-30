@@ -12,14 +12,16 @@
   }
   function enablePhotoPersonalization(product){
     const panel=document.querySelector('.photo-personalization'),add=document.querySelector('.add-cart'),gallery=document.querySelector('.main-product-image');
-    const textEnabled=Boolean(product.engraving_text_enabled),imageEnabled=Boolean(product.engraving_image_enabled),enabled=textEnabled||imageEnabled;
+    const textEnabled=Boolean(product.engraving_text_enabled),textRequired=Boolean(product.engraving_text_required),imageEnabled=Boolean(product.engraving_image_enabled),enabled=textEnabled||imageEnabled;
     if(!panel||!add)return;
     const textField=panel.querySelector('#engraving-text')?.closest('label'),imageField=panel.querySelector('#engraving-image')?.closest('label');
     panel.hidden=!enabled;if(textField)textField.hidden=!textEnabled;if(imageField)imageField.hidden=!imageEnabled;
     const textPrice=textField?.querySelector('strong'),imagePrice=imageField?.querySelector('strong');
-    if(textPrice)textPrice.textContent='+ '+money(product.engraving_text_price_cents||0);
+    if(textField){const title=textField.querySelector('span');if(title)title.childNodes[0].textContent=textRequired?'Nome, peso, altura, data e hora do nascimento *':'Digite aqui o que deseja gravar ';}
+    if(textPrice)textPrice.textContent=Number(product.engraving_text_price_cents||0)>0?'+ '+money(product.engraving_text_price_cents):'Incluso no valor';
     if(imagePrice)imagePrice.textContent='+ '+money(product.engraving_image_price_cents||0);
-    add.dataset.personalizable=enabled?'true':'false';add.dataset.engravingTextEnabled=textEnabled?'true':'false';add.dataset.engravingImageEnabled=imageEnabled?'true':'false';
+    const textInput=panel.querySelector('#engraving-text');if(textInput){textInput.required=textRequired;textInput.placeholder=textRequired?'Ex.: Maria, 3,310 kg, 47 cm, 09/01/2025 às 19:41':'Ex.: nome, data ou frase curta';}
+    add.dataset.personalizable=enabled?'true':'false';add.dataset.engravingTextEnabled=textEnabled?'true':'false';add.dataset.engravingTextRequired=textRequired?'true':'false';add.dataset.engravingImageEnabled=imageEnabled?'true':'false';
     add.dataset.engravingTextPrice=String(Number(product.engraving_text_price_cents)||0);add.dataset.engravingImagePrice=String(Number(product.engraving_image_price_cents)||0);
     if(gallery)gallery.dataset.previewMode=product.slug==='anel-personalizado-com-gravacao'?'ring':'standard';
   }
