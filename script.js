@@ -388,6 +388,7 @@ const reviewForm = document.querySelector(".review-form");
 const reviewPhoto = reviewForm?.querySelector("#review-photo");
 const reviewPhotoPreview = reviewForm?.querySelector(".review-photo-preview");
 let reviewPhotoUrl = "";
+const siteReviewList = document.querySelector(".reviews .review-list");
 
 function clearReviewPhoto() {
   if (reviewPhotoUrl) URL.revokeObjectURL(reviewPhotoUrl);
@@ -417,14 +418,48 @@ reviewPhoto?.addEventListener("change", () => {
 
 reviewPhotoPreview?.querySelector("button")?.addEventListener("click", clearReviewPhoto);
 
-reviewForm?.addEventListener("submit", (event) => {
+function renderSiteReviews(reviews) {
+  if (!siteReviewList) return;
+  siteReviewList.replaceChildren();
+  reviews.forEach((review) => {
+    const card = document.createElement("article"), stars = document.createElement("div"), quote = document.createElement("blockquote"), signature = document.createElement("small");
+    card.className = "review-card"; stars.className = "review-stars"; stars.textContent = "★".repeat(review.rating) + "☆".repeat(5 - review.rating);
+    quote.textContent = `“${review.comment}”`; signature.textContent = review.name;
+    card.append(stars, quote);
+    if (review.photo_url) { const image = document.createElement("img"); image.className = "review-card-photo"; image.src = review.photo_url; image.alt = `Foto enviada por ${review.name}`; image.loading = "lazy"; card.append(image); }
+    card.append(signature); siteReviewList.append(card);
+  });
+}
+
+async function loadSiteReviews() {
+  if (!siteReviewList) return;
+  const response = await fetch("/api/site-reviews");
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error?.message || "Não foi possível carregar as avaliações.");
+  if (data.reviews.length) renderSiteReviews(data.reviews);
+}
+
+reviewForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const feedback = event.currentTarget.querySelector(".review-feedback");
-  const hasPhoto = Boolean(reviewPhoto?.files?.length);
-  feedback.textContent = hasPhoto ? "Obrigada! Sua avaliação e sua foto foram registradas para esta apresentação." : "Obrigada! Sua avaliação foi registrada para esta apresentação.";
-  event.currentTarget.reset();
-  clearReviewPhoto();
+  const form = event.currentTarget, feedback = form.querySelector(".review-feedback"), button = form.querySelector('[type="submit"]');
+  const payload = new FormData();
+  payload.set("name", form.querySelector("#review-name").value);
+  payload.set("rating", form.querySelector("#review-rating").value.split(" ")[0]);
+  payload.set("comment", form.querySelector("#review-message").value);
+  if (reviewPhoto?.files?.[0]) payload.set("photo", reviewPhoto.files[0]);
+  button.disabled = true; feedback.textContent = "Enviando avaliação...";
+  try {
+    const response = await fetch("/api/site-reviews", { method: "POST", body: payload });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message || "Não foi possível salvar sua avaliação.");
+    await loadSiteReviews();
+    feedback.textContent = "Obrigada! Sua avaliação já está publicada.";
+    form.reset(); clearReviewPhoto();
+  } catch (error) { feedback.textContent = error.message; }
+  finally { button.disabled = false; }
 });
+
+loadSiteReviews().catch(() => {});
 
 document.querySelector(".tracking-form")?.addEventListener("submit", (event) => {
   event.preventDefault();

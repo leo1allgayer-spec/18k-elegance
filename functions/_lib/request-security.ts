@@ -35,10 +35,10 @@ export async function protectRequest(request: Request, env: Env): Promise<Respon
   if (!adminFormLogin && (origin !== url.origin || request.headers.get('Sec-Fetch-Site') === 'cross-site')) return apiError('Origem inválida.',403);
   const auth = path === '/admin-login' || path.startsWith('/api/auth/');
   const checkout = path === '/api/checkout/mercado-pago';
-  const upload = path === '/api/personalization/upload' || /^\/api\/admin\/(?:products|categories)\/\d+\/image$/.test(path);
+  const upload = path === '/api/personalization/upload' || path === '/api/site-reviews' || /^\/api\/admin\/(?:products|categories)\/\d+\/image$/.test(path);
   if (!auth && !checkout) {
     const group = upload ? 'upload' : path.startsWith('/api/admin/') ? 'admin-write' : path;
-    const limit = upload ? 20 : path === '/api/cart-recovery' ? 5 : path.startsWith('/api/reviews/') ? 15 : 90;
+    const limit = path === '/api/site-reviews' ? 8 : upload ? 20 : path === '/api/cart-recovery' ? 5 : path.startsWith('/api/reviews/') ? 15 : 90;
     if (!await consumeLimit(env, `${group}:ip:${ip}`,limit)) return limited();
     try { await readBoundedBody(request.clone(), upload ? 5*1024*1024+16384 : 65536); }
     catch (error) { if (error instanceof BodyTooLarge) return apiError('Dados muito grandes.',413); throw error; }
