@@ -18,9 +18,9 @@ function brazilToday(): string {
  return `${read("year")}-${read("month")}-${read("day")}`;
 }
 
-function scheduledAt(date: string): string | null {
- if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < brazilToday()) return null;
- const parsed = Date.parse(`${date}T12:00:00.000Z`);
+function scheduledAt(date: string, time: string): string | null {
+ if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time) || date < brazilToday()) return null;
+ const parsed = Date.parse(`${date}T${time}:00.000-03:00`);
  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
 }
 
@@ -93,12 +93,12 @@ export async function giftCardsRequest(request:Request,env:Env):Promise<Response
  }
  if(request.method!=="POST")return apiError("Método não permitido.",405);
  if(request.headers.get("origin")!==new URL(request.url).origin)return apiError("Origem inválida.",403);
- const body=await readJson<{action?:string;code?:string;amount_cents?:number;recipient_name?:string;recipient_phone?:string;message?:string;delivery_date?:string;request_key?:string}>(request);
+ const body=await readJson<{action?:string;code?:string;amount_cents?:number;recipient_name?:string;recipient_phone?:string;message?:string;delivery_date?:string;delivery_time?:string;request_key?:string}>(request);
  if(body.action==="balance"){
   const card=await giftCardBalance(env,String(body.code||"").trim().toUpperCase());
   return card?json({balance_cents:card.balance_cents}):apiError("Cartão inválido ou ainda não liberado.",400);
  }
- const amount=body.amount_cents,name=String(body.recipient_name||"").trim(),phone=String(body.recipient_phone||"").replace(/\D/g,""),message=String(body.message||"").trim(),key=String(body.request_key||""),delivery=scheduledAt(String(body.delivery_date||""));
+ const amount=body.amount_cents,name=String(body.recipient_name||"").trim(),phone=String(body.recipient_phone||"").replace(/\D/g,""),message=String(body.message||"").trim(),key=String(body.request_key||""),delivery=scheduledAt(String(body.delivery_date||""),String(body.delivery_time||""));
  if(!Number.isInteger(amount)||amount!<5000||amount!>200000||name.length<2||name.length>100||phone.length<10||phone.length>13||message.length>1000||!delivery||!/^[-a-zA-Z0-9]{16,80}$/.test(key))return apiError("Confira o valor, nome, WhatsApp, mensagem e data de envio.");
  const existing=await env.DB.prepare("SELECT * FROM gift_card_sales WHERE customer_id=? AND request_key=?").bind(customer.id,key).first<Sale>();
  if(existing?.checkout_url)return json({checkout_url:existing.checkout_url});

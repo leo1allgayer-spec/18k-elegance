@@ -1,5 +1,5 @@
 (function(){
- const form=document.querySelector('#gift-form'),custom=document.querySelector('#gift-custom'),preview=document.querySelector('#gift-preview-value'),deliveryDate=document.querySelector('#gift-delivery-date');
+ const form=document.querySelector('#gift-form'),custom=document.querySelector('#gift-custom'),preview=document.querySelector('#gift-preview-value'),deliveryDate=document.querySelector('#gift-delivery-date'),deliveryTime=document.querySelector('#gift-delivery-time');
  const money=c=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(c/100);
  const status=document.createElement('p');status.setAttribute('role','status');form.append(status);
  const section=document.createElement('section');section.className='gift-form';section.id='my-gifts';
@@ -51,7 +51,7 @@
   if(!Number.isInteger(amount())||amount()<5000||amount()>200000){status.textContent='Escolha um valor de R$ 50 a R$ 2.000.';return;}
   button.disabled=true;status.textContent='Preparando pagamento seguro...';
   try{
-   const data=await api({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount_cents:amount(),recipient_name:document.querySelector('#gift-name').value,recipient_phone:document.querySelector('#gift-phone').value,message:document.querySelector('#gift-message').value,delivery_date:deliveryDate.value,request_key:requestKey})});
+   const data=await api({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount_cents:amount(),recipient_name:document.querySelector('#gift-name').value,recipient_phone:document.querySelector('#gift-phone').value,message:document.querySelector('#gift-message').value,delivery_date:deliveryDate.value,delivery_time:deliveryTime.value,request_key:requestKey})});
    location.assign(data.checkout_url);
   }catch(error){status.textContent=error.message;button.disabled=false;}
  };
