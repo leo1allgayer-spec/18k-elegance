@@ -3,6 +3,8 @@ import { currentCustomer } from "../../_lib/auth";
 import { apiError, json } from "../../_lib/http";
 import { imageForm, validImage } from "../../_lib/image-validation";
 
+const MAX_PRODUCT_REVIEW_PHOTO_BYTES = 10 * 1024 * 1024;
+
 function imageExtension(file: File): string | null {
   return ({ "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" } as Record<string, string | undefined>)[file.type] || null;
 }
@@ -18,7 +20,7 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, params }) =>
       if (!customer) return apiError("Entre na sua conta para avaliar.", 401);
       let rating: unknown, comment = "", photo: File | null = null;
       if (request.headers.get("content-type")?.startsWith("multipart/form-data;")) {
-        const form = await imageForm(request);
+        const form = await imageForm(request, MAX_PRODUCT_REVIEW_PHOTO_BYTES);
         rating = Number(form.get("rating"));
         comment = String(form.get("comment") || "").trim();
         const candidate = form.get("photo");
@@ -33,12 +35,12 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, params }) =>
         comment = typeof body.comment === "string" ? body.comment.trim() : "";
       }
       if (typeof rating !== "number" || !Number.isInteger(rating) || rating < 1 || rating > 5 || comment.length > 2000) return apiError("Escolha uma nota de 1 a 5 e use até 2.000 caracteres.");
-      if (photo && (!env.PERSONALIZATION_BUCKET || !await validImage(photo))) return apiError("Use uma foto JPG, PNG ou WebP válida, de até 5 MB.");
+      if (photo && (!env.PERSONALIZATION_BUCKET || !await validImage(photo, MAX_PRODUCT_REVIEW_PHOTO_BYTES))) return apiError("Use uma foto JPG, PNG ou WebP válida, de até 10 MB.");
       const previous = await env.DB.prepare("SELECT photo_filename FROM product_reviews WHERE product_id=? AND customer_id=?").bind(id, customer.id).first<{ photo_filename: string | null }>();
       let filename: string | null = null;
       if (photo) {
         const extension = imageExtension(photo);
-        if (!extension) return apiError("Use uma foto JPG, PNG ou WebP válida, de até 5 MB.");
+        if (!extension) return apiError("Use uma foto JPG, PNG ou WebP válida, de até 10 MB.");
         filename = `${crypto.randomUUID()}.${extension}`;
         await env.PERSONALIZATION_BUCKET!.put(`reviews/${id}/${customer.id}/${filename}`, photo.stream(), { httpMetadata: { contentType: photo.type, cacheControl: "public, max-age=31536000, immutable" } });
       }
