@@ -40,7 +40,7 @@ export async function protectRequest(request: Request, env: Env): Promise<Respon
     const group = upload ? 'upload' : path.startsWith('/api/admin/') ? 'admin-write' : path;
     const limit = path === '/api/site-reviews' ? 8 : upload ? 20 : path === '/api/cart-recovery' ? 5 : path.startsWith('/api/reviews/') ? 15 : 90;
     if (!await consumeLimit(env, `${group}:ip:${ip}`,limit)) return limited();
-    try { await readBoundedBody(request.clone(), upload ? 5*1024*1024+16384 : 65536); }
+    try { await readBoundedBody(request.clone(), path === '/api/site-reviews' ? 10*1024*1024+16384 : upload ? 5*1024*1024+16384 : 65536); }
     catch (error) { if (error instanceof BodyTooLarge) return apiError('Dados muito grandes.',413); throw error; }
     return null;
   }

@@ -404,9 +404,9 @@ reviewPhoto?.addEventListener("change", () => {
   const file = reviewPhoto.files?.[0];
   const feedback = reviewForm.querySelector(".review-feedback");
   if (!file) return clearReviewPhoto();
-  if (!file.type.startsWith("image/") || file.size > 5 * 1024 * 1024) {
+  if (!file.type.startsWith("image/") || file.size > 10 * 1024 * 1024) {
     clearReviewPhoto();
-    feedback.textContent = "Escolha uma imagem JPG, PNG ou WebP de até 5 MB.";
+    feedback.textContent = "Escolha uma imagem JPG, PNG ou WebP de até 10 MB.";
     return;
   }
   if (reviewPhotoUrl) URL.revokeObjectURL(reviewPhotoUrl);

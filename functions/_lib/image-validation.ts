@@ -2,16 +2,16 @@ import { readBoundedBody } from './http';
 
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
-export async function imageForm(request: Request): Promise<FormData> {
+export async function imageForm(request: Request, maxBytes = MAX_IMAGE_BYTES): Promise<FormData> {
   if (!request.headers.get('content-type')?.startsWith('multipart/form-data;')) throw new Error('INVALID_IMAGE_FORM');
-  const bytes = await readBoundedBody(request, MAX_IMAGE_BYTES + 16384);
+  const bytes = await readBoundedBody(request, maxBytes + 16384);
   return new Response(bytes, {headers:{'Content-Type':request.headers.get('content-type')!}}).formData();
 }
 
 // Check the actual signature and container structure, never only the supplied MIME.
 // This is not an antivirus or a complete image decoder.
-export async function validImage(file: File): Promise<boolean> {
-  if (file.size < 12 || file.size > MAX_IMAGE_BYTES) return false;
+export async function validImage(file: File, maxBytes = MAX_IMAGE_BYTES): Promise<boolean> {
+  if (file.size < 12 || file.size > maxBytes) return false;
   const b = new Uint8Array(await file.arrayBuffer());
   const view = new DataView(b.buffer);
   const ascii = (start:number,length:number) => String.fromCharCode(...b.subarray(start,start+length));
