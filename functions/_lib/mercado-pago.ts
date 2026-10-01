@@ -5,6 +5,7 @@ import { uploadOwner, randomToken, orderCookie } from './guest-access';
 import { calculateCorreiosQuotes } from "./correios";
 import { giftCardBalance, syncGiftPayment } from "./gift-cards";
 import { reservationStatements, releaseCheckout, finalizeOrder } from './checkout-stock';
+import { exportPaidOrderToBling } from './bling-orders';
 
 type CheckoutItem = { product_id?: number; variant_id?: number; quantity?: number; personalization?: { engraving_text?: string; name_count?: number; image_upload_id?: string; image_name?: string; size?: string } };
 type CheckoutBody = {
@@ -388,12 +389,18 @@ export async function applyMercadoPagoPayment(env: Env, payment: MercadoPagoPaym
       await env.DB.prepare("UPDATE orders SET status='payment_review',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status NOT IN ('paid','preparing','shipped','delivered','refunded')").bind(order.id).run();
       return json({ok:true,review_required:true});
     }
+  }
+  if (mapped === "paid") {
+    // Do not let a temporary ERP failure invalidate an approved payment. A later
+    // payment notification can retry an export that was not marked as sent.
+    try { await exportPaidOrderToBling(env, order.id); }
+    catch (error) { console.error("Bling order export failed", order.id, String(error)); }
   } else if (mapped === "refunded") {
     await env.DB.batch([
       env.DB.prepare("UPDATE orders SET status='refunded',updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(order.id),
       env.DB.prepare("UPDATE gift_card_uses SET status='released' WHERE order_id=? AND status!='released'").bind(order.id)
     ]);
-  } else if (mapped !== "paid") {
+  } else {
     await env.DB.prepare("UPDATE orders SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('pending_payment','cancelled')").bind(mapped, order.id).run();
   }
   console.log(JSON.stringify({ event: "mercado_pago_webhook", payment_id: payment.id, order_id: order.id, status: payment.status }));
