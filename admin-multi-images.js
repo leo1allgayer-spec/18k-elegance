@@ -6,7 +6,7 @@
   bindProductImagePreview=function(){
     const input=document.querySelector('input[name="image_file"]'),preview=document.querySelector('.product-image-preview');
     if(!input||!preview)return;
-    const existingImage=preview.querySelector('img')?.getAttribute('src')||'';
+    let existingImage=preview.querySelector('img')?.getAttribute('src')||'';
     let files=[];
     input.multiple=true;
     input.dataset.append=existingImage?'1':'0';
@@ -20,7 +20,7 @@
     };
     const render=()=>{
       if(!files.length){
-        if(existingImage){preview.innerHTML=`<div class="selected-image"><img src="${existingImage}" alt="Imagem atual do produto"></div><span>Imagem atual. Novas fotos serão adicionadas a ela.</span>`;preview.hidden=false;}
+        if(existingImage){preview.innerHTML=`<div class="selected-image"><img src="${existingImage}" alt="Imagem atual do produto"><button class="remove-selected-image" type="button" data-remove-existing-image aria-label="Remover imagem atual">×</button></div><span>Imagem atual. Clique no × para removê-la ou escolha novas fotos para adicionar.</span>`;preview.hidden=false;preview.querySelector('[data-remove-existing-image]').onclick=()=>{existingImage='';input.dataset.append='0';const url=document.querySelector('input[name="image_url"]');if(url)url.value='';render()};}
         else preview.hidden=true;
         return;
       }

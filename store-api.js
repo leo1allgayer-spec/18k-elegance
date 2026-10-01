@@ -12,16 +12,19 @@
   }
   function enablePhotoPersonalization(product){
     const panel=document.querySelector('.photo-personalization'),add=document.querySelector('.add-cart'),gallery=document.querySelector('.main-product-image');
-    const textEnabled=Boolean(product.engraving_text_enabled),textRequired=Boolean(product.engraving_text_required),imageEnabled=Boolean(product.engraving_image_enabled),enabled=textEnabled||imageEnabled;
+    const textEnabled=Boolean(product.engraving_text_enabled),textRequired=Boolean(product.engraving_text_required),nameCountEnabled=Boolean(product.engraving_name_count_enabled),imageEnabled=Boolean(product.engraving_image_enabled),enabled=textEnabled||imageEnabled||nameCountEnabled;
     if(!panel||!add)return;
     const textField=panel.querySelector('#engraving-text')?.closest('label'),imageField=panel.querySelector('#engraving-image')?.closest('label');
     panel.hidden=!enabled;if(textField)textField.hidden=!textEnabled;if(imageField)imageField.hidden=!imageEnabled;
     const textPrice=textField?.querySelector('strong'),imagePrice=imageField?.querySelector('strong');
-    if(textField){const title=textField.querySelector('span');if(title)title.childNodes[0].textContent=textRequired?'Nome, peso, altura, data e hora do nascimento *':'Digite aqui o que deseja gravar ';}
+    let namesField=panel.querySelector('.name-count-personalization');
+    if(nameCountEnabled&&!namesField){namesField=document.createElement('div');namesField.className='name-count-personalization';namesField.innerHTML=`<p>Escolha a quantidade de nomes: <b data-name-count-label>1 Nome</b></p><div class="name-count-options" role="group" aria-label="Escolha a quantidade de nomes">${[1,2,3,4,5,6].map((count,index)=>`<button type="button" class="name-count-option${index?'':' active'}" data-name-count="${count}" aria-pressed="${index?'false':'true'}">${count} ${count===1?'Nome':'Nomes'}</button>`).join('')}</div>`;panel.querySelector('.personalization-fields')?.prepend(namesField);}
+    if(namesField)namesField.hidden=!nameCountEnabled;
+    if(textField){const title=textField.querySelector('span');if(title)title.childNodes[0].textContent=nameCountEnabled?'Preencha os nomes para gravação em ordem *':textRequired?'Nome, peso, altura, data e hora do nascimento *':'Digite aqui o que deseja gravar ';}
     if(textPrice)textPrice.textContent=Number(product.engraving_text_price_cents||0)>0?'+ '+money(product.engraving_text_price_cents):'Incluso no valor';
     if(imagePrice)imagePrice.textContent='+ '+money(product.engraving_image_price_cents||0);
-    const textInput=panel.querySelector('#engraving-text');if(textInput){textInput.required=textRequired;textInput.placeholder=textRequired?'Ex.: Maria, 3,310 kg, 47 cm, 09/01/2025 às 19:41':'Ex.: nome, data ou frase curta';}
-    add.dataset.personalizable=enabled?'true':'false';add.dataset.engravingTextEnabled=textEnabled?'true':'false';add.dataset.engravingTextRequired=textRequired?'true':'false';add.dataset.engravingImageEnabled=imageEnabled?'true':'false';
+    const textInput=panel.querySelector('#engraving-text');if(textInput){textInput.required=textRequired||nameCountEnabled;textInput.placeholder=nameCountEnabled?'Ex.: Maria, Júlia, João...':textRequired?'Ex.: Maria, 3,310 kg, 47 cm, 09/01/2025 às 19:41':'Ex.: nome, data ou frase curta';}
+    add.dataset.personalizable=enabled?'true':'false';add.dataset.engravingTextEnabled=textEnabled?'true':'false';add.dataset.engravingTextRequired=(textRequired||nameCountEnabled)?'true':'false';add.dataset.engravingNameCountEnabled=nameCountEnabled?'true':'false';add.dataset.engravingImageEnabled=imageEnabled?'true':'false';
     add.dataset.engravingTextPrice=String(Number(product.engraving_text_price_cents)||0);add.dataset.engravingImagePrice=String(Number(product.engraving_image_price_cents)||0);
     if(gallery)gallery.dataset.previewMode=product.slug==='anel-personalizado-com-gravacao'?'ring':'standard';
   }

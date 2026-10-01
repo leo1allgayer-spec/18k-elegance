@@ -136,6 +136,19 @@ const personalizationPreview = document.querySelector(".personalization-preview"
 const livePersonalization = document.querySelector(".live-personalization");
 const liveEngravingText = document.querySelector(".live-engraving-text");
 const liveEngravingImage = document.querySelector(".live-engraving-image");
+let selectedNameCount = 1;
+document.addEventListener("click", (event) => {
+  const option = event.target.closest("[data-name-count]");
+  if (!option) return;
+  selectedNameCount = Number(option.dataset.nameCount) || 1;
+  option.closest(".name-count-options")?.querySelectorAll("[data-name-count]").forEach((item) => {
+    const active = item === option;
+    item.classList.toggle("active", active);
+    item.setAttribute("aria-pressed", String(active));
+  });
+  const label = option.closest(".name-count-personalization")?.querySelector("[data-name-count-label]");
+  if (label) label.textContent = `${selectedNameCount} ${selectedNameCount === 1 ? "Nome" : "Nomes"}`;
+});
 function updateLivePersonalization() {
   if (!livePersonalization || !liveEngravingText || !liveEngravingImage) return;
   const text = engravingInput?.value.trim() || "";
@@ -181,10 +194,19 @@ document.querySelector(".add-cart")?.addEventListener("click", (event) => {
   const button = event.currentTarget;
   const qty = Number(document.querySelector(".quantity span")?.textContent || 1);
   const engravingText = document.querySelector("#engraving-text")?.value.trim() || "";
+  const nameCountEnabled = button.dataset.engravingNameCountEnabled === "true";
+  const engravingNames = engravingText.split(",").map((name) => name.trim()).filter(Boolean);
   if (button.dataset.engravingTextRequired === "true" && !engravingText) {
     const panel = document.querySelector(".photo-personalization");
     if (panel) panel.open = true;
     personalizationMessage.textContent = "Preencha nome, peso, altura, data e hora do nascimento para continuar.";
+    document.querySelector("#engraving-text")?.focus();
+    return;
+  }
+  if (nameCountEnabled && engravingNames.length !== selectedNameCount) {
+    const panel = document.querySelector(".photo-personalization");
+    if (panel) panel.open = true;
+    personalizationMessage.textContent = `Informe ${selectedNameCount} ${selectedNameCount === 1 ? "nome" : "nomes"}, separados por vírgula e na ordem da gravação.`;
     document.querySelector("#engraving-text")?.focus();
     return;
   }
@@ -193,7 +215,7 @@ document.querySelector(".add-cart")?.addEventListener("click", (event) => {
   }
   const selectedSize = button.dataset.size || "";
   const personalization = engravingText || personalizationUpload || selectedSize ? {
-    engraving_text: engravingText || undefined, image_upload_id: personalizationUpload?.id || undefined, image_name: personalizationUpload?.name || undefined, size: selectedSize || undefined,
+    engraving_text: engravingText || undefined, name_count: nameCountEnabled ? selectedNameCount : undefined, image_upload_id: personalizationUpload?.id || undefined, image_name: personalizationUpload?.name || undefined, size: selectedSize || undefined,
   } : null;
   const cart = getCart();
   const personalizationKey = JSON.stringify(personalization || {});
