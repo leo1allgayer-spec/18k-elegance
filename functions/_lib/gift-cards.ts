@@ -1,6 +1,7 @@
 import type { Env } from "./types";
 import { currentCustomer, sha256 } from "./auth";
 import { apiError, json, readJson } from "./http";
+import { normalizeBrazilPhone, sendWhatsAppMessage, whatsappConfigured } from "./whatsapp";
 
 async function provider<T>(env:Env,path:string,body?:unknown):Promise<T>{
  if(!env.MERCADO_PAGO_ACCESS_TOKEN)throw new Error("Pagamento indisponível.");
@@ -9,6 +10,50 @@ async function provider<T>(env:Env,path:string,body?:unknown):Promise<T>{
  return response.json<T>();
 }
 type Sale={id:string;gift_card_id:number;customer_id:number;amount_cents:number;status:string;checkout_url:string|null};
+type ScheduledCard={id:number;code:string;recipient_name:string;recipient_phone:string;message:string|null;initial_cents:number};
+
+function brazilToday(): string {
+ const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts();
+ const read = (type: string) => parts.find(part => part.type === type)?.value || "";
+ return `${read("year")}-${read("month")}-${read("day")}`;
+}
+
+function scheduledAt(date: string): string | null {
+ if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < brazilToday()) return null;
+ const parsed = Date.parse(`${date}T12:00:00.000Z`);
+ return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+}
+
+function deliveryMessage(card: ScheduledCard): string {
+ const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(card.initial_cents / 100);
+ return ["Você recebeu um Cartão Presente Elegance 18K!", `Para: ${card.recipient_name}`, `Valor: ${money}`, card.message || "", `Código: ${card.code}`, "Use no pagamento da sua compra: https://elegance18k.com/"].filter(Boolean).join("\n");
+}
+
+export async function sendScheduledGiftCards(env: Env): Promise<{ sent: number; failed: number }> {
+ if (!whatsappConfigured(env)) return { sent: 0, failed: 0 };
+ const due = await env.DB.prepare(`SELECT id,code,recipient_name,recipient_phone,message,initial_cents FROM gift_cards
+   WHERE status='active' AND delivery_status='scheduled' AND datetime(delivery_scheduled_for)<=CURRENT_TIMESTAMP
+   ORDER BY delivery_scheduled_for ASC LIMIT 25`).all<ScheduledCard>();
+ let sent = 0, failed = 0;
+ for (const card of due.results) {
+  const claim = await env.DB.prepare("UPDATE gift_cards SET delivery_status='sending',delivery_attempts=delivery_attempts+1,delivery_last_error=NULL WHERE id=? AND delivery_status='scheduled'").bind(card.id).run();
+  if (!claim.meta.changes) continue;
+  const phone = normalizeBrazilPhone(card.recipient_phone || "");
+  if (!phone) {
+   await env.DB.prepare("UPDATE gift_cards SET delivery_status='failed',delivery_last_error='Telefone inválido' WHERE id=?").bind(card.id).run();
+   failed++; continue;
+  }
+  try {
+   await sendWhatsAppMessage(env, phone, deliveryMessage(card));
+   await env.DB.prepare("UPDATE gift_cards SET delivery_status='sent',delivery_sent_at=CURRENT_TIMESTAMP,delivery_last_error=NULL WHERE id=? AND delivery_status='sending'").bind(card.id).run();
+   sent++;
+  } catch {
+   await env.DB.prepare("UPDATE gift_cards SET delivery_status='scheduled',delivery_last_error='Falha temporária no envio' WHERE id=? AND delivery_status='sending'").bind(card.id).run();
+   failed++;
+  }
+ }
+ return { sent, failed };
+}
 export async function syncGiftPayment(env:Env,payment:{id:number;status:string;transaction_amount:number;external_reference?:string}){
  if(!payment.external_reference?.startsWith("GFT-"))return false;
  const sale=await env.DB.prepare("SELECT * FROM gift_card_sales WHERE id=?").bind(payment.external_reference).first<Sale>();
@@ -42,26 +87,26 @@ export async function giftCardsRequest(request:Request,env:Env):Promise<Response
     for(const payment of result.results)await syncGiftPayment(env,payment);
    }
   }
-  const rows=await env.DB.prepare("SELECT s.id,s.status,s.checkout_url,g.recipient_name,g.recipient_phone,g.message,g.initial_cents,g.balance_cents,CASE WHEN g.status='active' THEN g.code ELSE NULL END AS code FROM gift_card_sales s JOIN gift_cards g ON g.id=s.gift_card_id WHERE s.customer_id=? ORDER BY g.id DESC LIMIT 100").bind(customer.id).all();
+  const rows=await env.DB.prepare("SELECT s.id,s.status,s.checkout_url,g.recipient_name,g.recipient_phone,g.message,g.initial_cents,g.balance_cents,g.delivery_scheduled_for,g.delivery_sent_at,g.delivery_status,CASE WHEN g.status='active' AND g.delivery_status='not_scheduled' THEN g.code ELSE NULL END AS code FROM gift_card_sales s JOIN gift_cards g ON g.id=s.gift_card_id WHERE s.customer_id=? ORDER BY g.id DESC LIMIT 100").bind(customer.id).all();
   const reserved=await env.DB.prepare("SELECT o.order_number,o.gift_checkout_url,u.amount_cents FROM gift_card_uses u JOIN orders o ON o.id=u.order_id WHERE o.customer_id=? AND u.status='reserved' ORDER BY o.id DESC LIMIT 50").bind(customer.id).all();
   return json({cards:rows.results,reserved:reserved.results});
  }
  if(request.method!=="POST")return apiError("Método não permitido.",405);
  if(request.headers.get("origin")!==new URL(request.url).origin)return apiError("Origem inválida.",403);
- const body=await readJson<{action?:string;code?:string;amount_cents?:number;recipient_name?:string;recipient_phone?:string;message?:string;request_key?:string}>(request);
+ const body=await readJson<{action?:string;code?:string;amount_cents?:number;recipient_name?:string;recipient_phone?:string;message?:string;delivery_date?:string;request_key?:string}>(request);
  if(body.action==="balance"){
   const card=await giftCardBalance(env,String(body.code||"").trim().toUpperCase());
   return card?json({balance_cents:card.balance_cents}):apiError("Cartão inválido ou ainda não liberado.",400);
  }
- const amount=body.amount_cents,name=String(body.recipient_name||"").trim(),phone=String(body.recipient_phone||"").replace(/\D/g,""),message=String(body.message||"").trim(),key=String(body.request_key||"");
- if(!Number.isInteger(amount)||amount!<5000||amount!>200000||name.length<2||name.length>100||phone.length<10||phone.length>13||message.length>1000||!/^[-a-zA-Z0-9]{16,80}$/.test(key))return apiError("Confira o valor (R$ 50 a R$ 2.000), nome, telefone e mensagem.");
+ const amount=body.amount_cents,name=String(body.recipient_name||"").trim(),phone=String(body.recipient_phone||"").replace(/\D/g,""),message=String(body.message||"").trim(),key=String(body.request_key||""),delivery=scheduledAt(String(body.delivery_date||""));
+ if(!Number.isInteger(amount)||amount!<5000||amount!>200000||name.length<2||name.length>100||phone.length<10||phone.length>13||message.length>1000||!delivery||!/^[-a-zA-Z0-9]{16,80}$/.test(key))return apiError("Confira o valor, nome, WhatsApp, mensagem e data de envio.");
  const existing=await env.DB.prepare("SELECT * FROM gift_card_sales WHERE customer_id=? AND request_key=?").bind(customer.id,key).first<Sale>();
  if(existing?.checkout_url)return json({checkout_url:existing.checkout_url});
  if(existing&&existing.amount_cents!==amount)return apiError("Atualize a página para iniciar uma compra com outro valor.",409);
  const id=existing?.id||"GFT-"+crypto.randomUUID(),code="ELG-"+crypto.randomUUID().replaceAll("-","").toUpperCase();
  if(!existing)await env.DB.batch([
   env.DB.prepare("INSERT INTO gift_card_sales(id,customer_id,amount_cents,request_key) VALUES(?,?,?,?)").bind(id,customer.id,amount!,key),
-  env.DB.prepare("INSERT INTO gift_cards(code_hash,code,purchaser_customer_id,recipient_name,recipient_phone,message,initial_cents,balance_cents) VALUES(?,?,?,?,?,?,?,0)").bind(await sha256(code),code,customer.id,name,phone,message,amount!),
+  env.DB.prepare("INSERT INTO gift_cards(code_hash,code,purchaser_customer_id,recipient_name,recipient_phone,message,initial_cents,balance_cents,delivery_scheduled_for,delivery_status) VALUES(?,?,?,?,?,?,?,?,?, 'scheduled')").bind(await sha256(code),code,customer.id,name,phone,message,amount!,delivery),
   env.DB.prepare("UPDATE gift_card_sales SET gift_card_id=(SELECT id FROM gift_cards WHERE code_hash=?) WHERE id=?").bind(await sha256(code),id)
  ]);
  const origin=new URL(request.url).origin;

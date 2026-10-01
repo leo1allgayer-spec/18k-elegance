@@ -17,10 +17,11 @@
       <form class="gift-form" id="gift-form">
         <fieldset><legend>1. Escolha o valor</legend><div class="gift-values"><label><input type="radio" name="valor" value="R$ 50,00" checked><span>R$ 50</span></label><label><input type="radio" name="valor" value="R$ 100,00"><span>R$ 100</span></label><label><input type="radio" name="valor" value="R$ 150,00"><span>R$ 150</span></label><label><input type="radio" name="valor" value="R$ 200,00"><span>R$ 200</span></label><label><input type="radio" name="valor" value="Outro valor"><span>Outro valor</span></label></div><input class="gift-custom" id="gift-custom" type="text" inputmode="decimal" placeholder="Informe o valor desejado" hidden><small>Escolha um valor entre R$ 50 e R$ 2.000.</small></fieldset>
         <fieldset><legend>2. Dados de quem vai receber</legend><div class="gift-fields"><label>Nome<input id="gift-name" required placeholder="Nome do presenteado"></label><label>WhatsApp<input id="gift-phone" required inputmode="tel" placeholder="(51) 99999-9999"></label></div><label>Mensagem<textarea id="gift-message" rows="4" placeholder="Escreva uma mensagem especial"></textarea></label></fieldset>
-        <fieldset><legend>3. Pagamento e envio</legend><p>Entre na sua conta, pague no Mercado Pago e aguarde a aprovação. O código ficará disponível em Meus cartões abaixo, para você compartilhar pelo WhatsApp.</p><a href="conta.html">Entrar ou criar conta →</a></fieldset>
+        <fieldset><legend>3. Agende o envio</legend><label>Data de envio pelo WhatsApp<input id="gift-delivery-date" type="date" required></label><small>Após a confirmação do pagamento, o cartão será enviado automaticamente para a pessoa presenteada na data escolhida, por volta das 9h (horário de Brasília).</small></fieldset>
+        <fieldset><legend>4. Pagamento</legend><p>Entre na sua conta, pague no Mercado Pago e aguarde a aprovação. O cartão só será enviado na data agendada.</p><a href="conta.html">Entrar ou criar conta →</a></fieldset>
         <button class="button gift-submit" type="submit">Comprar cartão-presente</button><small class="gift-note">O cartão é liberado após a confirmação do pagamento. O saldo pode ser usado em mais de uma compra. Guarde o código com segurança.</small>
       </form>
     </div>
   </main>
-  <script src="gift-card.js?v=20260910-01"></script>
+  <script src="gift-card.js?v=20261001-scheduled-delivery"></script>
 </body></html>

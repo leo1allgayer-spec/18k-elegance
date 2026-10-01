@@ -7,11 +7,17 @@ export default {
     const timestamp = String(Date.now());
     // Pages cannot be a Service Binding target (Wrangler explicitly rejects it).
     // Only this fixed same-project URL is called. HMAC never exposes the secret.
+    const headers = { "X-Stock-Time": timestamp, "X-Stock-Signature": await signStockTick(control.secret, timestamp) };
     const response = await fetch("https://elegance18k.com/api/integrations/bling-stock-tick", {
-      method: "POST", headers: { "X-Stock-Time": timestamp, "X-Stock-Signature": await signStockTick(control.secret, timestamp) },
+      method: "POST", headers,
       signal: AbortSignal.timeout(115000), redirect: "manual",
     });
     await response.body?.cancel();
     if (!response.ok) throw new Error(`Stock synchronization HTTP ${response.status}; see admin settings.`);
+    const delivery = await fetch("https://elegance18k.com/api/integrations/gift-card-delivery-tick", {
+      method: "POST", headers, signal: AbortSignal.timeout(115000), redirect: "manual",
+    });
+    await delivery.body?.cancel();
+    if (!delivery.ok) throw new Error(`Gift-card delivery HTTP ${delivery.status}; see admin settings.`);
   },
 } satisfies ExportedHandler<StockSchedulerEnv>;

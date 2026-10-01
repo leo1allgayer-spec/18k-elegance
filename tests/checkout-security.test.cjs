@@ -16,7 +16,7 @@ const {securityHeaders,privatePath}=require('../functions/_lib/security-headers.
 const {readBoundedBody}=require('../functions/_lib/http.ts');
 function fixture(){
  const db=new DatabaseSync(':memory:');
- for(const file of ['0001_initial','0003_product_personalization','0004_product_personalizable','0008_customer_accounts_first_purchase','0009_product_details_and_personalization','0011_gift_card_checkout','0012_whatsapp_recovery','0018_checkout_security','0019_security_hardening','0020_category_images','0021_admin_mfa','0022_required_personalization_text','0023_name_count_personalization']){
+ for(const file of ['0001_initial','0003_product_personalization','0004_product_personalizable','0008_customer_accounts_first_purchase','0009_product_details_and_personalization','0011_gift_card_checkout','0012_whatsapp_recovery','0018_checkout_security','0019_security_hardening','0020_category_images','0021_admin_mfa','0022_required_personalization_text','0023_name_count_personalization','0024_gift_card_scheduled_delivery']){
   db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations',file+'.sql'),'utf8'));
  }
  db.exec(`INSERT INTO customers(id,name,email,phone,password_hash,password_salt,account_claimed) VALUES(1,'Original','owner@example.test','51999990000','unchanged','unchanged',0);
