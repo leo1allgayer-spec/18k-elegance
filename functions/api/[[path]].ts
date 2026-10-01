@@ -33,6 +33,7 @@ import { uploadCategoryImage, publicCategoryImage } from "../_lib/category-image
 
 type CategoryBody = { remove_image?: boolean; name?: string; description?: string; sort_order?: number; active?: boolean };
 type CouponBody = { code?: string; type?: "percent" | "fixed"; value?: number; minimum_cents?: number; starts_at?: string | null; expires_at?: string | null; max_uses?: number | null; active?: boolean };
+type ShippingOriginBody = { business_name?: string; document?: string; phone?: string; postal_code?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string };
 
 const slugify = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 const integer = (value: unknown, fallback = 0) => Number.isFinite(Number(value)) ? Math.round(Number(value)) : fallback;
@@ -273,6 +274,23 @@ async function adminOrders(env: Env): Promise<Response> {
     o.tracking_code, o.created_at, c.name AS customer_name, c.email AS customer_email
     FROM orders o JOIN customers c ON c.id = o.customer_id ORDER BY o.created_at DESC LIMIT 200`).all();
   return json({ ok: true, orders: result.results });
+}
+
+async function shippingOrigin(env: Env): Promise<Response> {
+  const origin = await env.DB.prepare("SELECT business_name,document,phone,postal_code,street,number,complement,neighborhood,city,state FROM shipping_origins WHERE id=1").first();
+  return json({ origin: origin || null });
+}
+
+async function saveShippingOrigin(request: Request, env: Env): Promise<Response> {
+  const body = await readJson<ShippingOriginBody>(request);
+  const fields = ['business_name','document','phone','postal_code','street','number','neighborhood','city','state'] as const;
+  const value = (key: keyof ShippingOriginBody, limit = 160) => String(body[key] || '').trim().slice(0, limit);
+  const origin = Object.fromEntries(fields.map(key => [key, value(key)])) as Record<typeof fields[number], string>;
+  if (Object.values(origin).some(item => !item) || !/^\d{8}$/.test(origin.postal_code.replace(/\D/g,'')) || !/^[A-Z]{2}$/i.test(origin.state)) return apiError('Preencha corretamente todos os dados do remetente.');
+  await env.DB.prepare(`INSERT INTO shipping_origins(id,business_name,document,phone,postal_code,street,number,complement,neighborhood,city,state)
+    VALUES(1,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET business_name=excluded.business_name,document=excluded.document,phone=excluded.phone,postal_code=excluded.postal_code,street=excluded.street,number=excluded.number,complement=excluded.complement,neighborhood=excluded.neighborhood,city=excluded.city,state=excluded.state`)
+    .bind(origin.business_name,origin.document,origin.phone,origin.postal_code.replace(/\D/g,''),origin.street,origin.number,value('complement'),origin.neighborhood,origin.city,origin.state.toUpperCase()).run();
+  return shippingOrigin(env);
 }
 
 async function adminOrderDetail(env: Env, id: number): Promise<Response> {
@@ -583,6 +601,8 @@ async function route(request: Request, env: Env): Promise<Response> {
     const admin = await requireAdmin(request, env);
     if (!admin) return apiError("Acesso restrito à administração.", 403, "FORBIDDEN");
     if (method === "GET" && parts[1] === "dashboard") return adminDashboard(env);
+    if (method === "GET" && parts.join("/") === "admin/shipping/origin") return shippingOrigin(env);
+    if (method === "PUT" && parts.join("/") === "admin/shipping/origin") return saveShippingOrigin(request, env);
     if (method === "GET" && parts.join("/") === "admin/integrations/bling/connect") return blingConnect(request, env, admin);
     if (method === "GET" && parts.join("/") === "admin/integrations/bling/status") return blingStatus(env);
     if (method === "POST" && parts.join("/") === "admin/integrations/bling/diagnostics") return blingDiagnostics(env);
