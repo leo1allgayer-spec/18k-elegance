@@ -199,7 +199,7 @@ document.querySelector(".add-cart")?.addEventListener("click", (event) => {
   if (button.dataset.engravingTextRequired === "true" && !engravingText) {
     const panel = document.querySelector(".photo-personalization");
     if (panel) panel.open = true;
-    personalizationMessage.textContent = "Preencha nome, peso, altura, data e hora do nascimento para continuar.";
+    personalizationMessage.textContent = button.dataset.engravingNameCountEnabled === "true" ? "Preencha os nomes para gravação na ordem escolhida." : "Preencha o campo de personalização para continuar.";
     document.querySelector("#engraving-text")?.focus();
     return;
   }
