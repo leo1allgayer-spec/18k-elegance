@@ -242,8 +242,8 @@ if ("IntersectionObserver" in window) {
       observer.unobserve(entry.target);
     });
   }, { threshold: 0.16 });
-  document.querySelectorAll(".reveal-section").forEach((section) => revealObserver.observe(section));
-} else document.querySelectorAll(".reveal-section").forEach((section) => section.classList.add("is-visible"));
+  document.querySelectorAll(".reveal-section, .reveal-story-part").forEach((section) => revealObserver.observe(section));
+} else document.querySelectorAll(".reveal-section, .reveal-story-part").forEach((section) => section.classList.add("is-visible"));
 
 function renderCart() {
   const container = document.querySelector("#cart-items");
