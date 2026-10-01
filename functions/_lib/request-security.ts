@@ -21,7 +21,7 @@ export async function protectRequest(request: Request, env: Env): Promise<Respon
       && !await consumeLimit(env, `public-read:ip:${ip}`, 120)) return limited();
     return null;
   }
-  const serverCallback = ['/api/payments/mercado-pago/webhook','/api/integrations/bling-stock-tick'].includes(path);
+  const serverCallback = ['/api/payments/mercado-pago/webhook','/api/integrations/bling-stock-tick','/api/integrations/gift-card-delivery-tick'].includes(path);
   if (serverCallback) {
     try { await readBoundedBody(request.clone(),65536); } catch { return apiError('Dados muito grandes.',413); }
     return null;

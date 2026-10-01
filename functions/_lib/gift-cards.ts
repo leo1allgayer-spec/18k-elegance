@@ -47,8 +47,9 @@ export async function sendScheduledGiftCards(env: Env): Promise<{ sent: number; 
    await sendWhatsAppMessage(env, phone, deliveryMessage(card));
    await env.DB.prepare("UPDATE gift_cards SET delivery_status='sent',delivery_sent_at=CURRENT_TIMESTAMP,delivery_last_error=NULL WHERE id=? AND delivery_status='sending'").bind(card.id).run();
    sent++;
-  } catch {
-   await env.DB.prepare("UPDATE gift_cards SET delivery_status='scheduled',delivery_last_error='Falha temporária no envio' WHERE id=? AND delivery_status='sending'").bind(card.id).run();
+  } catch (error) {
+   const detail = error instanceof Error && /^EVOLUTION_SEND_FAILED_\d{3}$/.test(error.message) ? error.message : 'Falha temporária no envio';
+   await env.DB.prepare("UPDATE gift_cards SET delivery_status='scheduled',delivery_last_error=? WHERE id=? AND delivery_status='sending'").bind(detail, card.id).run();
    failed++;
   }
  }

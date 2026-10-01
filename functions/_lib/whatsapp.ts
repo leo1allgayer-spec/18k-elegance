@@ -24,6 +24,6 @@ export async function sendWhatsAppMessage(env: Env, to: string, text: string): P
   });
   if (!response.ok) {
     console.error("Evolution API error", { status: response.status });
-    throw new Error("EVOLUTION_SEND_FAILED");
+    throw new Error(`EVOLUTION_SEND_FAILED_${response.status}`);
   }
 }
