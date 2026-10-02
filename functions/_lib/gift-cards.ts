@@ -140,7 +140,7 @@ export async function giftCardsRequest(request:Request,env:Env):Promise<Response
  // Mercado Pago may omit the sandbox link for a production preference (and vice
  // versa). Always use the valid link it returned instead of sending an empty URL
  // to the customer's browser.
- const preferred=token.startsWith("TEST-")?result.sandbox_init_point:result.init_point;
+ const preferred=env.MERCADO_PAGO_ACCESS_TOKEN!.trim().startsWith("TEST-")?result.sandbox_init_point:result.init_point;
  const checkout=preferred||result.init_point||result.sandbox_init_point;
  let paymentUrl: URL;
  try { paymentUrl = new URL(checkout); }
