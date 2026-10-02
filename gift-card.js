@@ -10,6 +10,7 @@
  form.addEventListener('input',()=>{requestKey=crypto.randomUUID();refresh();document.querySelector('#gift-preview-name').textContent=document.querySelector('#gift-name').value||'uma pessoa especial';});
  async function api(options,query=''){const response=await fetch('/api/gift-cards'+query,options),text=await response.text();let data={};try{data=text?JSON.parse(text):{};}catch{}if(!response.ok){const error=new Error(data.error?.message||'O servidor não conseguiu processar o cartão-presente. Tente novamente em instantes.');error.status=response.status;throw error;}return data;}
  function openPayment(value){let url;try{url=new URL(value);if(url.protocol!=='https:')throw new Error();}catch{throw new Error('O Mercado Pago não retornou um link de pagamento válido. Tente novamente.');}const link=document.createElement('a');link.href=url.href;link.target='_self';link.rel='noopener';link.hidden=true;document.body.append(link);link.click();link.remove();}
+ async function showPaymentReturn(){const sale=new URLSearchParams(location.search).get('sale');if(!sale)return;const notice=document.createElement('p');notice.className='gift-payment-return';notice.textContent='Confirmando o pagamento do cartão-presente...';form.prepend(notice);try{const data=await api(undefined,'?sale='+encodeURIComponent(sale));const card=(data.cards||[]).find(item=>item.id===sale);if(card?.status==='approved'||card?.code){notice.replaceChildren('Pagamento aprovado! O cartão está ativo e o envio foi programado. ',Object.assign(document.createElement('a'),{href:'conta.html',textContent:'Ver meus cartões-presente'}));}else notice.textContent='O pagamento está em análise. Assim que for aprovado, o cartão ficará disponível em Sua conta.';}catch{notice.textContent='Não foi possível confirmar o pagamento nesta tela. Consulte o cartão em Sua conta.';}}
  form.onsubmit=async event=>{
   event.preventDefault();const button=form.querySelector('[type=submit]');
   if(!Number.isInteger(amount())||amount()<100||amount()>200000){status.textContent='Escolha um valor de R$ 1 a R$ 2.000.';return;}
@@ -28,5 +29,5 @@
    button.disabled=false;
   }
  };
- refresh();
+ refresh();showPaymentReturn();
 })();
