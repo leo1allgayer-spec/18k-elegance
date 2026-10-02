@@ -13,24 +13,6 @@ async function provider<T>(env:Env,path:string,body?:unknown):Promise<T>{
 type Sale={id:string;gift_card_id:number;customer_id:number;amount_cents:number;status:string;checkout_url:string|null};
 type ScheduledCard={id:number;code:string;recipient_name:string;recipient_phone:string;message:string|null;initial_cents:number};
 
-async function giftCardSchema(env: Env): Promise<void> {
- await env.DB.prepare(`CREATE TABLE IF NOT EXISTS gift_card_sales (
-   id TEXT PRIMARY KEY, gift_card_id INTEGER UNIQUE REFERENCES gift_cards(id),
-   customer_id INTEGER NOT NULL REFERENCES customers(id),
-   amount_cents INTEGER NOT NULL CHECK(amount_cents BETWEEN 5000 AND 200000),
-   request_key TEXT NOT NULL, checkout_url TEXT, status TEXT NOT NULL DEFAULT 'pending', payment_id TEXT,
-   UNIQUE(customer_id,request_key)
- )`).run();
- const columns=await env.DB.prepare("PRAGMA table_info(gift_cards)").all<{name:string}>();
- const existing=new Set(columns.results.map(column=>column.name));
- const additions:[string,string][]=[
-  ['code','TEXT'],['delivery_scheduled_for','TEXT'],['delivery_sent_at','TEXT'],
-  ['delivery_status',"TEXT NOT NULL DEFAULT 'not_scheduled'"],['delivery_attempts','INTEGER NOT NULL DEFAULT 0'],['delivery_last_error','TEXT']
- ];
- for(const [name,definition] of additions)if(!existing.has(name))await env.DB.prepare(`ALTER TABLE gift_cards ADD COLUMN ${name} ${definition}`).run();
- await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_gift_cards_scheduled_delivery ON gift_cards(delivery_status, delivery_scheduled_for)").run();
-}
-
 function brazilToday(): string {
  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts();
  const read = (type: string) => parts.find(part => part.type === type)?.value || "";
@@ -98,7 +80,6 @@ export async function giftCardBalance(env:Env,code:string){
 export async function giftCardsRequest(request:Request,env:Env):Promise<Response>{
  const customer=await currentCustomer(request,env);
  if(!customer)return apiError("Entre ou crie sua conta para comprar ou usar um cartão-presente.",401);
- await giftCardSchema(env);
  if(request.method==="GET"){
   const requested=new URL(request.url).searchParams.get("sale");
   if(requested){
