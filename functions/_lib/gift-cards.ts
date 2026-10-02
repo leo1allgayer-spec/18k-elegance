@@ -6,7 +6,7 @@ import { normalizeBrazilPhone, sendWhatsAppMessage, whatsappConfigured } from ".
 async function provider<T>(env:Env,path:string,body?:unknown):Promise<T>{
  const token=env.MERCADO_PAGO_ACCESS_TOKEN?.trim();
  if(!token)throw new Error("Pagamento indisponível.");
- const response=await fetch("https://api.mercadopago.com"+path,{redirect:'error',signal:AbortSignal.timeout(15000),method:body?"POST":"GET",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},...(body?{body:JSON.stringify(body)}:{})});
+ const response=await fetch("https://api.mercadopago.com"+path,{signal:AbortSignal.timeout(15000),method:body?"POST":"GET",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},...(body?{body:JSON.stringify(body)}:{})});
  if(!response.ok)throw new Error("Não foi possível consultar o Mercado Pago.");
  return response.json<T>();
 }
