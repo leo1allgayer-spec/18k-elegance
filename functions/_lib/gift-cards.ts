@@ -122,7 +122,10 @@ export async function giftCardsRequest(request:Request,env:Env):Promise<Response
  // to the customer's browser.
  const preferred=env.MERCADO_PAGO_ACCESS_TOKEN!.startsWith("TEST-")?result.sandbox_init_point:result.init_point;
  const checkout=preferred||result.init_point||result.sandbox_init_point;
- if(typeof checkout!=="string"||!/^https:\/\//i.test(checkout))throw new Error("O Mercado Pago não retornou um link de pagamento. Tente novamente em instantes.");
- await env.DB.prepare("UPDATE gift_card_sales SET checkout_url=? WHERE id=?").bind(checkout,id).run();
- return json({checkout_url:checkout},201);
+ let paymentUrl: URL;
+ try { paymentUrl = new URL(checkout); }
+ catch { throw new Error("O Mercado Pago não retornou um link de pagamento válido. Tente novamente em instantes."); }
+ if(paymentUrl.protocol!=="https:")throw new Error("O Mercado Pago não retornou um link de pagamento seguro. Tente novamente em instantes.");
+ await env.DB.prepare("UPDATE gift_card_sales SET checkout_url=? WHERE id=?").bind(paymentUrl.toString(),id).run();
+ return json({checkout_url:paymentUrl.toString()},201);
 }

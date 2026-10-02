@@ -13,6 +13,7 @@
  function refresh(){custom.hidden=form.valor.value!=='Outro valor';preview.textContent=Number.isFinite(amount())?money(amount()):'Informe o valor';}
  form.addEventListener('input',()=>{requestKey=crypto.randomUUID();refresh();document.querySelector('#gift-preview-name').textContent=document.querySelector('#gift-name').value||'uma pessoa especial';});
  async function api(options,query=''){const response=await fetch('/api/gift-cards'+query,options),data=await response.json();if(!response.ok)throw new Error(data.error?.message||'Não foi possível concluir.');return data;}
+ function openPayment(value){let url;try{url=new URL(value);if(url.protocol!=='https:')throw new Error();}catch{throw new Error('O Mercado Pago não retornou um link de pagamento válido. Tente novamente.');}const link=document.createElement('a');link.href=url.href;link.target='_self';link.rel='noopener';link.hidden=true;document.body.append(link);link.click();link.remove();}
  async function load(){
   const list=section.querySelector('.gift-list');list.textContent='Consultando cartões...';
   try{
@@ -52,8 +53,7 @@
   button.disabled=true;status.textContent='Preparando pagamento seguro...';
   try{
    const data=await api({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount_cents:amount(),recipient_name:document.querySelector('#gift-name').value,recipient_phone:document.querySelector('#gift-phone').value,message:document.querySelector('#gift-message').value,delivery_date:deliveryDate.value,delivery_time:deliveryTime.value,request_key:requestKey})});
-   if(typeof data.checkout_url!=='string'||!/^https:\/\//i.test(data.checkout_url))throw new Error('O Mercado Pago não retornou um link de pagamento. Tente novamente.');
-   location.assign(data.checkout_url);
+   openPayment(data.checkout_url);
   }catch(error){status.textContent=error.message;button.disabled=false;}
  };
  refresh();load();
