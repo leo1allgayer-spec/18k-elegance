@@ -446,6 +446,25 @@ export async function reconcileExpiredCheckout(env: Env): Promise<void> {
   await releaseCheckout(env,order.id);
 }
 
+export async function cleanupStalePendingOrders(env: Env): Promise<number> {
+  const rows=await env.DB.prepare(`SELECT id FROM orders WHERE status='pending_payment'
+    AND datetime(created_at)<=datetime('now','-48 hours') ORDER BY id LIMIT 25`).all<{id:number}>();
+  for(const order of rows.results){
+    await env.DB.batch([
+      env.DB.prepare("UPDATE stock_reservations SET status='released' WHERE order_id=? AND status='held'").bind(order.id),
+      env.DB.prepare("UPDATE gift_card_uses SET status='released' WHERE order_id=? AND status='reserved'").bind(order.id),
+      env.DB.prepare('DELETE FROM payments WHERE order_id=?').bind(order.id),
+      env.DB.prepare('DELETE FROM checkout_security WHERE order_id=?').bind(order.id),
+      env.DB.prepare('DELETE FROM stock_reservations WHERE order_id=?').bind(order.id),
+      env.DB.prepare('DELETE FROM gift_card_uses WHERE order_id=?').bind(order.id),
+      env.DB.prepare('UPDATE personalization_uploads SET order_id=NULL WHERE order_id=?').bind(order.id),
+      env.DB.prepare('DELETE FROM order_items WHERE order_id=?').bind(order.id),
+      env.DB.prepare("DELETE FROM orders WHERE id=? AND status='pending_payment'").bind(order.id),
+    ]);
+  }
+  return rows.results.length;
+}
+
 export async function mercadoPagoDiagnostic(env: Env): Promise<Response> {
   if (!env.MERCADO_PAGO_ACCESS_TOKEN) return apiError("O Mercado Pago ainda não está configurado.", 503, "PAYMENT_NOT_CONFIGURED");
   try {

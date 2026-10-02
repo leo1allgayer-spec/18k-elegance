@@ -80,6 +80,18 @@ export async function giftCardBalance(env:Env,code:string){
 export async function giftCardsRequest(request:Request,env:Env):Promise<Response>{
  const customer=await currentCustomer(request,env);
  if(!customer)return apiError("Entre ou crie sua conta para comprar ou usar um cartão-presente.",401);
+ const path=new URL(request.url).pathname.split('/').filter(Boolean);
+ const saleId=path.length===3?path[2]:'';
+ if(request.method==='DELETE'){
+  if(!/^GFT-[a-f0-9-]{36}$/i.test(saleId))return apiError('Cartão-presente inválido.',404);
+  const sale=await env.DB.prepare(`SELECT s.id,s.gift_card_id FROM gift_card_sales s JOIN gift_cards g ON g.id=s.gift_card_id
+    WHERE s.id=? AND s.customer_id=? AND s.status='pending' AND g.status='pending_payment'
+    AND datetime(g.created_at)<=datetime('now','-48 hours')`).bind(saleId,customer.id).first<{id:string;gift_card_id:number}>();
+  if(!sale)return apiError('Somente cartões não pagos há pelo menos 48 horas podem ser excluídos.',409);
+  await env.DB.prepare('DELETE FROM gift_card_sales WHERE id=? AND customer_id=?').bind(sale.id,customer.id).run();
+  await env.DB.prepare("DELETE FROM gift_cards WHERE id=? AND status='pending_payment'").bind(sale.gift_card_id).run();
+  return json({ok:true});
+ }
  if(request.method==="GET"){
   const requested=new URL(request.url).searchParams.get("sale");
   if(requested){
@@ -89,7 +101,7 @@ export async function giftCardsRequest(request:Request,env:Env):Promise<Response
     for(const payment of result.results)await syncGiftPayment(env,payment);
    }
   }
-  const rows=await env.DB.prepare("SELECT s.id,s.status,s.checkout_url,g.recipient_name,g.recipient_phone,g.message,g.initial_cents,g.balance_cents,g.delivery_scheduled_for,g.delivery_sent_at,g.delivery_status,CASE WHEN g.status='active' AND g.delivery_status='not_scheduled' THEN g.code ELSE NULL END AS code FROM gift_card_sales s JOIN gift_cards g ON g.id=s.gift_card_id WHERE s.customer_id=? ORDER BY g.id DESC LIMIT 100").bind(customer.id).all();
+  const rows=await env.DB.prepare("SELECT s.id,s.status,s.checkout_url,g.recipient_name,g.recipient_phone,g.message,g.initial_cents,g.balance_cents,g.delivery_scheduled_for,g.delivery_sent_at,g.delivery_status,g.created_at,CASE WHEN g.status='active' AND g.delivery_status='not_scheduled' THEN g.code ELSE NULL END AS code FROM gift_card_sales s JOIN gift_cards g ON g.id=s.gift_card_id WHERE s.customer_id=? ORDER BY g.id DESC LIMIT 100").bind(customer.id).all();
   const reserved=await env.DB.prepare("SELECT o.order_number,o.gift_checkout_url,u.amount_cents FROM gift_card_uses u JOIN orders o ON o.id=u.order_id WHERE o.customer_id=? AND u.status='reserved' ORDER BY o.id DESC LIMIT 50").bind(customer.id).all();
   return json({cards:rows.results,reserved:reserved.results});
  }
