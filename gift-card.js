@@ -12,7 +12,7 @@
  function amount(){const raw=form.valor.value==='Outro valor'?custom.value:form.valor.value;return Math.round(Number(raw.replace(/R\$|\s/g,'').replace(/\./g,'').replace(',','.'))*100)}
  function refresh(){custom.hidden=form.valor.value!=='Outro valor';preview.textContent=Number.isFinite(amount())?money(amount()):'Informe o valor';}
  form.addEventListener('input',()=>{requestKey=crypto.randomUUID();refresh();document.querySelector('#gift-preview-name').textContent=document.querySelector('#gift-name').value||'uma pessoa especial';});
- async function api(options,query=''){const response=await fetch('/api/gift-cards'+query,options),data=await response.json();if(!response.ok)throw new Error(data.error?.message||'Não foi possível concluir.');return data;}
+ async function api(options,query=''){const response=await fetch('/api/gift-cards'+query,options),text=await response.text();let data={};try{data=text?JSON.parse(text):{};}catch{}if(!response.ok)throw new Error(data.error?.message||'O servidor não conseguiu processar o cartão-presente. Tente novamente em instantes.');return data;}
  function openPayment(value){let url;try{url=new URL(value);if(url.protocol!=='https:')throw new Error();}catch{throw new Error('O Mercado Pago não retornou um link de pagamento válido. Tente novamente.');}const link=document.createElement('a');link.href=url.href;link.target='_self';link.rel='noopener';link.hidden=true;document.body.append(link);link.click();link.remove();}
  async function load(){
   const list=section.querySelector('.gift-list');list.textContent='Consultando cartões...';
