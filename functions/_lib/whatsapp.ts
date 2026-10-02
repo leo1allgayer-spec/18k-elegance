@@ -18,7 +18,6 @@ export async function sendWhatsAppMessage(env: Env, to: string, text: string): P
   const instance = env.EVOLUTION_INSTANCE.trim();
   if (!/^https:\/\//i.test(baseUrl)) throw new Error("EVOLUTION_URL_INVALID");
   const response = await fetch(`${baseUrl}/message/sendText/${encodeURIComponent(instance)}`, {
-    redirect: 'error',
     method: "POST",
     headers: { apikey: apiKey, "Content-Type": "application/json" },
     // Some Evolution installations fail the entire request while generating a

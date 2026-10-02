@@ -1,7 +1,7 @@
 const authSection=document.querySelector('#account-auth'),dashboard=document.querySelector('#account-dashboard'),message=document.querySelector('.account-message'),dashboardMessage=document.querySelector('.dashboard-message');
 const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const money=value=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format((Number(value)||0)/100);
-async function api(path,options={}){const response=await fetch('/api/'+path,{credentials:'same-origin',...options,headers:{'Content-Type':'application/json',...(options.headers||{})}}),data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error?.message||'Não foi possível concluir.');return data}
+async function api(path,options={}){const response=await fetch('/api/'+path,{credentials:'same-origin',...options,headers:{'Content-Type':'application/json',...(options.headers||{})}}),text=await response.text();let data={};try{data=text?JSON.parse(text):{}}catch{}if(!response.ok){const fallback=response.status>=500?'O serviço de envio está indisponível no momento. Tente novamente em alguns minutos.':'Não foi possível concluir.';throw new Error(data.error?.message||fallback)}return data}
 function showMessage(text,error=false){const target=dashboard.hidden?message:dashboardMessage;target.textContent=text;target.classList.toggle('error',error)}
 const authForms=['#account-login','#account-register','#account-forgot','#account-reset'];
 const profileForm=document.querySelector('#profile-form'),profileFields=profileForm.querySelector('.profile-fields'),profileSummary=profileForm.querySelector('.profile-summary');
