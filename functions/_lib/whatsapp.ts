@@ -14,11 +14,13 @@ export function whatsappConfigured(env: Env): boolean {
 export async function sendWhatsAppMessage(env: Env, to: string, text: string): Promise<void> {
   if (!env.EVOLUTION_API_URL || !env.EVOLUTION_API_KEY || !env.EVOLUTION_INSTANCE) throw new Error("EVOLUTION_NOT_CONFIGURED");
   const baseUrl = env.EVOLUTION_API_URL.trim().replace(/\/+$/, "");
+  const apiKey = env.EVOLUTION_API_KEY.trim();
+  const instance = env.EVOLUTION_INSTANCE.trim();
   if (!/^https:\/\//i.test(baseUrl)) throw new Error("EVOLUTION_URL_INVALID");
-  const response = await fetch(`${baseUrl}/message/sendText/${encodeURIComponent(env.EVOLUTION_INSTANCE)}`, {
+  const response = await fetch(`${baseUrl}/message/sendText/${encodeURIComponent(instance)}`, {
     redirect: 'error',
     method: "POST",
-    headers: { apikey: env.EVOLUTION_API_KEY, "Content-Type": "application/json" },
+    headers: { apikey: apiKey, "Content-Type": "application/json" },
     // Some Evolution installations fail the entire request while generating a
     // remote link preview. The URL remains clickable in WhatsApp without it.
     body: JSON.stringify({ number: to, text, delay: 800, linkPreview: false }),
