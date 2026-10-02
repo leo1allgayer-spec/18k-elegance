@@ -4,8 +4,9 @@ import { apiError, json, readJson } from "./http";
 import { normalizeBrazilPhone, sendWhatsAppMessage, whatsappConfigured } from "./whatsapp";
 
 async function provider<T>(env:Env,path:string,body?:unknown):Promise<T>{
- if(!env.MERCADO_PAGO_ACCESS_TOKEN)throw new Error("Pagamento indisponível.");
- const response=await fetch("https://api.mercadopago.com"+path,{redirect:'error',signal:AbortSignal.timeout(15000),method:body?"POST":"GET",headers:{Authorization:"Bearer "+env.MERCADO_PAGO_ACCESS_TOKEN,"Content-Type":"application/json"},...(body?{body:JSON.stringify(body)}:{})});
+ const token=env.MERCADO_PAGO_ACCESS_TOKEN?.trim();
+ if(!token)throw new Error("Pagamento indisponível.");
+ const response=await fetch("https://api.mercadopago.com"+path,{redirect:'error',signal:AbortSignal.timeout(15000),method:body?"POST":"GET",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json"},...(body?{body:JSON.stringify(body)}:{})});
  if(!response.ok)throw new Error("Não foi possível consultar o Mercado Pago.");
  return response.json<T>();
 }
@@ -139,7 +140,7 @@ export async function giftCardsRequest(request:Request,env:Env):Promise<Response
  // Mercado Pago may omit the sandbox link for a production preference (and vice
  // versa). Always use the valid link it returned instead of sending an empty URL
  // to the customer's browser.
- const preferred=env.MERCADO_PAGO_ACCESS_TOKEN!.startsWith("TEST-")?result.sandbox_init_point:result.init_point;
+ const preferred=token.startsWith("TEST-")?result.sandbox_init_point:result.init_point;
  const checkout=preferred||result.init_point||result.sandbox_init_point;
  let paymentUrl: URL;
  try { paymentUrl = new URL(checkout); }

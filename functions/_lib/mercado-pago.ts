@@ -42,13 +42,14 @@ function validEmail(value: string) { return /^\S+@\S+\.\S+$/.test(value); }
 function digits(value: string) { return value.replace(/\D/g, ""); }
 
 async function mercadoPago<T>(env: Env, path: string, init: RequestInit = {}): Promise<T> {
-  if (!env.MERCADO_PAGO_ACCESS_TOKEN) throw new Error("MERCADO_PAGO_NOT_CONFIGURED");
+  const token = env.MERCADO_PAGO_ACCESS_TOKEN?.trim();
+  if (!token) throw new Error("MERCADO_PAGO_NOT_CONFIGURED");
   const response = await fetch(`https://api.mercadopago.com${path}`, {
     ...init,
     redirect: 'error',
     signal: AbortSignal.timeout(15000),
     headers: {
-      Authorization: `Bearer ${env.MERCADO_PAGO_ACCESS_TOKEN}`,
+      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       ...(init.headers || {}),
     },
@@ -327,7 +328,7 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
     });
     await env.DB.prepare("UPDATE payments SET provider_order_id=?,updated_at=CURRENT_TIMESTAMP WHERE order_id=?")
       .bind(preference.id, orderId).run();
-    const checkoutUrl = env.MERCADO_PAGO_ACCESS_TOKEN.startsWith("TEST-") ? preference.sandbox_init_point : preference.init_point;
+    const checkoutUrl = env.MERCADO_PAGO_ACCESS_TOKEN.trim().startsWith("TEST-") ? preference.sandbox_init_point : preference.init_point;
     if (!checkoutUrl) throw new Error("MERCADO_PAGO_WITHOUT_URL");
     if(giftCents)await env.DB.prepare("UPDATE orders SET gift_checkout_url=? WHERE id=?").bind(checkoutUrl,orderId).run();
     return json({ ok: true, order_number: orderNumber, checkout_url: checkoutUrl }, 201, accessHeaders);
