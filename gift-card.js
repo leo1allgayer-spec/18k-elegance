@@ -6,7 +6,7 @@
  section.innerHTML='<h2>Meus cartões-presente</h2><p>Entre na sua conta para consultar os cartões comprados.</p><a href="conta.html">Entrar ou criar conta</a><button type="button" class="outline-button">Atualizar cartões</button><div class="gift-list"></div>';
  document.querySelector('.gift-shell').append(section);
  let requestKey=crypto.randomUUID();
- const localDate=()=>{const now=new Date();const offset=now.getTimezoneOffset();return new Date(now.getTime()-offset*60000).toISOString().slice(0,10)};
+ const localDate=()=>{const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts();const value=type=>parts.find(part=>part.type===type)?.value||'';return `${value('year')}-${value('month')}-${value('day')}`};
  deliveryDate.min=localDate();deliveryDate.value=localDate();
  const deliveryLabel=value=>value?new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo'}).format(new Date(value)):'sem agendamento';
  function amount(){const raw=form.valor.value==='Outro valor'?custom.value:form.valor.value;return Math.round(Number(raw.replace(/R\$|\s/g,'').replace(/\./g,'').replace(',','.'))*100)}
@@ -52,6 +52,7 @@
   button.disabled=true;status.textContent='Preparando pagamento seguro...';
   try{
    const data=await api({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount_cents:amount(),recipient_name:document.querySelector('#gift-name').value,recipient_phone:document.querySelector('#gift-phone').value,message:document.querySelector('#gift-message').value,delivery_date:deliveryDate.value,delivery_time:deliveryTime.value,request_key:requestKey})});
+   if(typeof data.checkout_url!=='string'||!/^https:\/\//i.test(data.checkout_url))throw new Error('O Mercado Pago não retornou um link de pagamento. Tente novamente.');
    location.assign(data.checkout_url);
   }catch(error){status.textContent=error.message;button.disabled=false;}
  };

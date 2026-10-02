@@ -117,7 +117,12 @@ export async function giftCardsRequest(request:Request,env:Env):Promise<Response
   back_urls:{success:origin+"/cartao-presente.html?sale="+id,pending:origin+"/cartao-presente.html?sale="+id,failure:origin+"/cartao-presente.html?sale="+id},
   auto_return:"approved",notification_url:origin+"/api/payments/mercado-pago/webhook"
  });
- const checkout=env.MERCADO_PAGO_ACCESS_TOKEN!.startsWith("TEST-")?result.sandbox_init_point:result.init_point;
+ // Mercado Pago may omit the sandbox link for a production preference (and vice
+ // versa). Always use the valid link it returned instead of sending an empty URL
+ // to the customer's browser.
+ const preferred=env.MERCADO_PAGO_ACCESS_TOKEN!.startsWith("TEST-")?result.sandbox_init_point:result.init_point;
+ const checkout=preferred||result.init_point||result.sandbox_init_point;
+ if(typeof checkout!=="string"||!/^https:\/\//i.test(checkout))throw new Error("O Mercado Pago não retornou um link de pagamento. Tente novamente em instantes.");
  await env.DB.prepare("UPDATE gift_card_sales SET checkout_url=? WHERE id=?").bind(checkout,id).run();
  return json({checkout_url:checkout},201);
 }
