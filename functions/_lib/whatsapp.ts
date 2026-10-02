@@ -19,7 +19,9 @@ export async function sendWhatsAppMessage(env: Env, to: string, text: string): P
     redirect: 'error',
     method: "POST",
     headers: { apikey: env.EVOLUTION_API_KEY, "Content-Type": "application/json" },
-    body: JSON.stringify({ number: to, text, delay: 800, linkPreview: true }),
+    // Some Evolution installations fail the entire request while generating a
+    // remote link preview. The URL remains clickable in WhatsApp without it.
+    body: JSON.stringify({ number: to, text, delay: 800, linkPreview: false }),
     signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) {
