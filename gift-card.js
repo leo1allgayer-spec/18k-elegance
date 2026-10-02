@@ -2,51 +2,14 @@
  const form=document.querySelector('#gift-form'),custom=document.querySelector('#gift-custom'),preview=document.querySelector('#gift-preview-value'),deliveryDate=document.querySelector('#gift-delivery-date'),deliveryTime=document.querySelector('#gift-delivery-time');
  const money=c=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(c/100);
  const status=document.createElement('p');status.setAttribute('role','status');form.append(status);
- const section=document.createElement('section');section.className='gift-form';section.id='my-gifts';
- section.innerHTML='<h2>Meus cartões-presente</h2><p>Entre na sua conta para consultar os cartões comprados.</p><a href="conta.html">Entrar ou criar conta</a><button type="button" class="outline-button">Atualizar cartões</button><div class="gift-list"></div>';
- document.querySelector('.gift-shell').append(section);
  let requestKey=crypto.randomUUID();
  const localDate=()=>{const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts();const value=type=>parts.find(part=>part.type===type)?.value||'';return `${value('year')}-${value('month')}-${value('day')}`};
  deliveryDate.min=localDate();deliveryDate.value=localDate();
- const deliveryLabel=value=>value?new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo'}).format(new Date(value)):'sem agendamento';
  function amount(){const raw=form.valor.value==='Outro valor'?custom.value:form.valor.value;return Math.round(Number(raw.replace(/R\$|\s/g,'').replace(/\./g,'').replace(',','.'))*100)}
  function refresh(){custom.hidden=form.valor.value!=='Outro valor';preview.textContent=Number.isFinite(amount())?money(amount()):'Informe o valor';}
  form.addEventListener('input',()=>{requestKey=crypto.randomUUID();refresh();document.querySelector('#gift-preview-name').textContent=document.querySelector('#gift-name').value||'uma pessoa especial';});
  async function api(options,query=''){const response=await fetch('/api/gift-cards'+query,options),text=await response.text();let data={};try{data=text?JSON.parse(text):{};}catch{}if(!response.ok){const error=new Error(data.error?.message||'O servidor não conseguiu processar o cartão-presente. Tente novamente em instantes.');error.status=response.status;throw error;}return data;}
  function openPayment(value){let url;try{url=new URL(value);if(url.protocol!=='https:')throw new Error();}catch{throw new Error('O Mercado Pago não retornou um link de pagamento válido. Tente novamente.');}const link=document.createElement('a');link.href=url.href;link.target='_self';link.rel='noopener';link.hidden=true;document.body.append(link);link.click();link.remove();}
- async function load(){
-  const list=section.querySelector('.gift-list');list.textContent='Consultando cartões...';
-  try{
-   const sale=new URLSearchParams(location.search).get('sale');
-   const data=await api(undefined,sale?'?sale='+encodeURIComponent(sale):'');list.replaceChildren();
-   if(!data.cards.length)list.textContent='Você ainda não comprou cartões-presente.';
-   (data.reserved||[]).forEach(order=>{
-    const row=document.createElement('p');row.textContent='Saldo reservado no pedido '+order.order_number+': '+money(order.amount_cents)+'. ';
-    const link=document.createElement('a');link.href=order.gift_checkout_url||'https://wa.me/555194927676?text='+encodeURIComponent('Preciso de ajuda com o saldo reservado no pedido '+order.order_number);
-    link.textContent=order.gift_checkout_url?'Continuar pagamento':'Solicitar ajuda com pagamento';row.append(link);list.append(row);
-   });
-   data.cards.forEach(card=>{
-    const article=document.createElement('article'),title=document.createElement('h3'),info=document.createElement('p');
-    title.textContent='Para '+card.recipient_name+' · '+money(card.initial_cents);
-    if(card.status==='refunded')info.textContent='Pagamento estornado';
-    else if(card.delivery_status==='sent')info.textContent='Enviado automaticamente em '+deliveryLabel(card.delivery_sent_at)+'.';
-    else if(card.delivery_status==='scheduled')info.textContent='Envio programado para '+deliveryLabel(card.delivery_scheduled_for)+' após a confirmação do pagamento.';
-    else info.textContent=card.code?'Saldo disponível: '+money(card.balance_cents):'Aguardando pagamento / confirmação';
-    article.append(title,info);
-    if(card.code){
-     const code=document.createElement('p'),share=document.createElement('a');code.textContent='Código: '+card.code;
-     share.className='outline-button';share.textContent='Enviar pelo WhatsApp';share.target='_blank';share.rel='noopener';
-     const text=['Você recebeu um Cartão Presente Elegance 18K!','Para: '+card.recipient_name,'Valor: '+money(card.initial_cents),card.message||'','Código: '+card.code,'Use no pagamento da sua compra: https://elegance18k.com/'].join('\n');
-     const phone=card.recipient_phone.replace(/\D/g,'');share.href='https://wa.me/'+(phone.length<=11?'55':'')+phone+'?text='+encodeURIComponent(text);
-     article.append(code,share);
-    }else if(card.checkout_url&&card.status!=='refunded'){
-     const pay=document.createElement('a');pay.href=card.checkout_url;pay.className='outline-button';pay.textContent='Continuar pagamento';article.append(pay);
-    }
-    list.append(article);
-   });
-  }catch(error){list.textContent=error.status===401?'Entre ou crie sua conta para consultar os cartões-presente.':error.message;}
- }
- section.querySelector('button').onclick=load;
  form.onsubmit=async event=>{
   event.preventDefault();const button=form.querySelector('[type=submit]');
   if(!Number.isInteger(amount())||amount()<100||amount()>200000){status.textContent='Escolha um valor de R$ 1 a R$ 2.000.';return;}
@@ -65,5 +28,5 @@
    button.disabled=false;
   }
  };
- refresh();load();
+ refresh();
 })();
