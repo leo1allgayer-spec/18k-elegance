@@ -499,9 +499,10 @@ async function forgotPassword(request: Request, env: Env): Promise<Response> {
     const firstName = customer.name.trim().split(/\s+/)[0];
     const resetUrl = publicUrl(request, "conta.html", token);
     await sendWhatsAppMessage(env, phone, `Olá, ${firstName}!\n\nVocê solicitou a recuperação da sua senha da *Elegance 18K*.\n\nCrie uma nova senha pelo link abaixo:\n${resetUrl}\n\nO link expira em 30 minutos. Se você não fez essa solicitação, ignore esta mensagem.`);
-  } catch {
+  } catch (error) {
     await env.DB.prepare("DELETE FROM password_reset_tokens WHERE token_hash=?").bind(tokenHash).run();
-    return apiError("Não foi possível enviar a mensagem agora. Tente novamente em instantes.", 502, "WHATSAPP_SEND_FAILED");
+    const detail = error instanceof Error && /^EVOLUTION_SEND_FAILED_\d{3}$/.test(error.message) ? ` (${error.message.slice(-3)})` : "";
+    return apiError(`Não foi possível enviar a mensagem agora. Tente novamente em instantes.${detail}`, 502, "WHATSAPP_SEND_FAILED");
   }
   return json({ ok: true, message: genericMessage });
 }
