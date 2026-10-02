@@ -1,5 +1,5 @@
 (function(){
- const form=document.querySelector('#gift-form'),custom=document.querySelector('#gift-custom'),preview=document.querySelector('#gift-preview-value'),deliveryDate=document.querySelector('#gift-delivery-date'),deliveryTime=document.querySelector('#gift-delivery-time'),loginLink=document.querySelector('.gift-form>fieldset:nth-of-type(4) .gift-login-link');
+ const form=document.querySelector('#gift-form'),custom=document.querySelector('#gift-custom'),preview=document.querySelector('#gift-preview-value'),deliveryDate=document.querySelector('#gift-delivery-date'),deliveryTime=document.querySelector('#gift-delivery-time');
  const money=c=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(c/100);
  const status=document.createElement('p');status.setAttribute('role','status');form.append(status);
  const section=document.createElement('section');section.className='gift-form';section.id='my-gifts';
@@ -13,14 +13,12 @@
  function refresh(){custom.hidden=form.valor.value!=='Outro valor';preview.textContent=Number.isFinite(amount())?money(amount()):'Informe o valor';}
  form.addEventListener('input',()=>{requestKey=crypto.randomUUID();refresh();document.querySelector('#gift-preview-name').textContent=document.querySelector('#gift-name').value||'uma pessoa especial';});
  async function api(options,query=''){const response=await fetch('/api/gift-cards'+query,options),text=await response.text();let data={};try{data=text?JSON.parse(text):{};}catch{}if(!response.ok){const error=new Error(data.error?.message||'O servidor não conseguiu processar o cartão-presente. Tente novamente em instantes.');error.status=response.status;throw error;}return data;}
- function setLoginRequired(required){if(loginLink)loginLink.hidden=!required;}
  function openPayment(value){let url;try{url=new URL(value);if(url.protocol!=='https:')throw new Error();}catch{throw new Error('O Mercado Pago não retornou um link de pagamento válido. Tente novamente.');}const link=document.createElement('a');link.href=url.href;link.target='_self';link.rel='noopener';link.hidden=true;document.body.append(link);link.click();link.remove();}
  async function load(){
   const list=section.querySelector('.gift-list');list.textContent='Consultando cartões...';
   try{
    const sale=new URLSearchParams(location.search).get('sale');
    const data=await api(undefined,sale?'?sale='+encodeURIComponent(sale):'');list.replaceChildren();
-   setLoginRequired(false);
    if(!data.cards.length)list.textContent='Você ainda não comprou cartões-presente.';
    (data.reserved||[]).forEach(order=>{
     const row=document.createElement('p');row.textContent='Saldo reservado no pedido '+order.order_number+': '+money(order.amount_cents)+'. ';
@@ -46,7 +44,7 @@
     }
     list.append(article);
    });
-  }catch(error){setLoginRequired(error.status===401);list.textContent=error.status===401?'Entre ou crie sua conta para consultar os cartões-presente.':error.message;}
+  }catch(error){list.textContent=error.status===401?'Entre ou crie sua conta para consultar os cartões-presente.':error.message;}
  }
  section.querySelector('button').onclick=load;
  form.onsubmit=async event=>{
@@ -61,7 +59,7 @@
    if(error.status===401){
     const message=document.createElement('span'),link=document.createElement('a');
     message.textContent='Entre ou crie sua conta para comprar ou usar um cartão-presente.';
-    setLoginRequired(true);link.href='conta.html';link.className='gift-login-link';link.textContent='Criar conta ou entrar';
+    link.href='conta.html';link.className='gift-login-link';link.textContent='Criar conta ou entrar';
     status.append(message,link);
    }else status.textContent=error.message;
    button.disabled=false;
