@@ -53,6 +53,23 @@ function publicUrl(request: Request, page: string, token: string): string {
   return url.toString();
 }
 
+// Older production databases may predate the recovery migration. Keep this
+// lightweight, idempotent schema check here so a password recovery request can
+// never fail just because that historical migration was missed.
+async function passwordRecoverySchema(env: Env): Promise<void> {
+  await env.DB.batch([
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at TEXT NOT NULL,
+      used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_password_reset_customer_created ON password_reset_tokens(customer_id, created_at)"),
+  ]);
+}
+
 function sanitizeCart(items: RecoveryCartItem[]): RecoveryCartItem[] | null {
   if (!Array.isArray(items) || items.length < 1 || items.length > 50) return null;
   const sanitized = items.map(item => {
@@ -467,6 +484,7 @@ async function forgotPassword(request: Request, env: Env): Promise<Response> {
     LIMIT 1`).bind(phone, localPhone).first<{ id: number; name: string }>();
   const genericMessage = "Se esse celular estiver cadastrado, enviaremos as instruções pelo WhatsApp.";
   if (!customer) return json({ ok: true, message: genericMessage });
+  await passwordRecoverySchema(env);
   const recent = await env.DB.prepare(`SELECT COUNT(*) AS total FROM password_reset_tokens
     WHERE customer_id=? AND created_at >= datetime('now','-15 minutes')`).bind(customer.id).first<{ total: number }>();
   if ((recent?.total || 0) >= 3) return apiError("Aguarde alguns minutos antes de pedir outro link.", 429, "RATE_LIMITED");
@@ -494,6 +512,7 @@ async function resetPassword(request: Request, env: Env): Promise<Response> {
   const password = String(body.password || "");
   if (token.length < 30) return apiError("Este link de recuperação é inválido.", 400, "INVALID_TOKEN");
   if (password.length < 12 || password.length > 128) return apiError("Use uma senha entre 12 e 128 caracteres.");
+  await passwordRecoverySchema(env);
   const tokenHash = await sha256(token);
   const record = await env.DB.prepare(`SELECT id, customer_id FROM password_reset_tokens
     WHERE token_hash=? AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP`).bind(tokenHash).first<{ id: number; customer_id: number }>();
