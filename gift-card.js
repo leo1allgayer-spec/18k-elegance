@@ -49,7 +49,7 @@
  section.querySelector('button').onclick=load;
  form.onsubmit=async event=>{
   event.preventDefault();const button=form.querySelector('[type=submit]');
-  if(!Number.isInteger(amount())||amount()<5000||amount()>200000){status.textContent='Escolha um valor de R$ 50 a R$ 2.000.';return;}
+  if(!Number.isInteger(amount())||amount()<100||amount()>200000){status.textContent='Escolha um valor de R$ 1 a R$ 2.000.';return;}
   button.disabled=true;status.textContent='Preparando pagamento seguro...';
   try{
    const data=await api({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount_cents:amount(),recipient_name:document.querySelector('#gift-name').value,recipient_phone:document.querySelector('#gift-phone').value,message:document.querySelector('#gift-message').value,delivery_date:deliveryDate.value,delivery_time:deliveryTime.value,request_key:requestKey})});

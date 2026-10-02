@@ -101,7 +101,7 @@ export async function giftCardsRequest(request:Request,env:Env):Promise<Response
   return card?json({balance_cents:card.balance_cents}):apiError("Cartão inválido ou ainda não liberado.",400);
  }
  const amount=body.amount_cents,name=String(body.recipient_name||"").trim(),phone=String(body.recipient_phone||"").replace(/\D/g,""),message=String(body.message||"").trim(),key=String(body.request_key||""),delivery=scheduledAt(String(body.delivery_date||""),String(body.delivery_time||""));
- if(!Number.isInteger(amount)||amount!<5000||amount!>200000||name.length<2||name.length>100||phone.length<10||phone.length>13||message.length>1000||!delivery||!/^[-a-zA-Z0-9]{16,80}$/.test(key))return apiError("Confira o valor, nome, WhatsApp, mensagem e data de envio.");
+ if(!Number.isInteger(amount)||amount!<100||amount!>200000||name.length<2||name.length>100||phone.length<10||phone.length>13||message.length>1000||!delivery||!/^[-a-zA-Z0-9]{16,80}$/.test(key))return apiError("Confira o valor, nome, WhatsApp, mensagem e data de envio.");
  const existing=await env.DB.prepare("SELECT * FROM gift_card_sales WHERE customer_id=? AND request_key=?").bind(customer.id,key).first<Sale>();
  if(existing?.checkout_url)return json({checkout_url:existing.checkout_url});
  if(existing&&existing.amount_cents!==amount)return apiError("Atualize a página para iniciar uma compra com outro valor.",409);
