@@ -106,11 +106,12 @@ export async function giftCardsRequest(request:Request,env:Env):Promise<Response
  if(existing?.checkout_url)return json({checkout_url:existing.checkout_url});
  if(existing&&existing.amount_cents!==amount)return apiError("Atualize a página para iniciar uma compra com outro valor.",409);
  const id=existing?.id||"GFT-"+crypto.randomUUID(),code="ELG-"+crypto.randomUUID().replaceAll("-","").toUpperCase();
- if(!existing)await env.DB.batch([
-  env.DB.prepare("INSERT INTO gift_card_sales(id,customer_id,amount_cents,request_key) VALUES(?,?,?,?)").bind(id,customer.id,amount!,key),
-  env.DB.prepare("INSERT INTO gift_cards(code_hash,code,purchaser_customer_id,recipient_name,recipient_phone,message,initial_cents,balance_cents,delivery_scheduled_for,delivery_status) VALUES(?,?,?,?,?,?,?,?,?, 'scheduled')").bind(await sha256(code),code,customer.id,name,phone,message,amount!,delivery),
-  env.DB.prepare("UPDATE gift_card_sales SET gift_card_id=(SELECT id FROM gift_cards WHERE code_hash=?) WHERE id=?").bind(await sha256(code),id)
- ]);
+ if(!existing){
+  const codeHash=await sha256(code);
+  await env.DB.prepare("INSERT INTO gift_card_sales(id,customer_id,amount_cents,request_key) VALUES(?,?,?,?)").bind(id,customer.id,amount!,key).run();
+  await env.DB.prepare("INSERT INTO gift_cards(code_hash,code,purchaser_customer_id,recipient_name,recipient_phone,message,initial_cents,balance_cents,delivery_scheduled_for,delivery_status) VALUES(?,?,?,?,?,?,?,?,?, 'scheduled')").bind(codeHash,code,customer.id,name,phone,message,amount!,amount!,delivery).run();
+  await env.DB.prepare("UPDATE gift_card_sales SET gift_card_id=(SELECT id FROM gift_cards WHERE code_hash=?) WHERE id=?").bind(codeHash,id).run();
+ }
  const origin=new URL(request.url).origin;
  const result=await provider<{init_point:string;sandbox_init_point:string}>(env,"/checkout/preferences",{
   items:[{id,title:"Cartão-presente Elegance 18K",quantity:1,currency_id:"BRL",unit_price:amount!/100}],
