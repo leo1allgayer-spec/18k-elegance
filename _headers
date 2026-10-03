@@ -12,3 +12,21 @@
 
 /assets/*
   Cache-Control: public, max-age=2592000, stale-while-revalidate=86400
+
+/admin.html
+  X-Robots-Tag: noindex, nofollow
+
+/admin-demo.html
+  X-Robots-Tag: noindex, nofollow
+
+/carrinho.html
+  X-Robots-Tag: noindex, follow
+
+/checkout.html
+  X-Robots-Tag: noindex, follow
+
+/pagamento-retorno.html
+  X-Robots-Tag: noindex, follow
+
+/rastreamento.html
+  X-Robots-Tag: noindex, follow
