@@ -30,3 +30,29 @@ export async function sendWhatsAppMessage(env: Env, to: string, text: string): P
     throw new Error(`EVOLUTION_SEND_FAILED_${response.status}`);
   }
 }
+
+export async function sendWhatsAppImage(env: Env, to: string, imageUrl: string, caption: string): Promise<void> {
+  if (!env.EVOLUTION_API_URL || !env.EVOLUTION_API_KEY || !env.EVOLUTION_INSTANCE) throw new Error("EVOLUTION_NOT_CONFIGURED");
+  const baseUrl = env.EVOLUTION_API_URL.trim().replace(/\/+$/, "");
+  const apiKey = env.EVOLUTION_API_KEY.trim();
+  const instance = env.EVOLUTION_INSTANCE.trim();
+  if (!/^https:\/\//i.test(baseUrl) || !/^https:\/\//i.test(imageUrl)) throw new Error("EVOLUTION_URL_INVALID");
+  const response = await fetch(`${baseUrl}/message/sendMedia/${encodeURIComponent(instance)}`, {
+    method: "POST",
+    headers: { apikey: apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      number: to,
+      mediatype: "image",
+      mimetype: "image/png",
+      media: imageUrl,
+      fileName: "cartao-presente-elegance-18k.png",
+      caption,
+      delay: 800,
+    }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!response.ok) {
+    console.error("Evolution media error", { status: response.status });
+    throw new Error(`EVOLUTION_MEDIA_FAILED_${response.status}`);
+  }
+}
