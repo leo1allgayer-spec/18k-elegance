@@ -16,7 +16,7 @@
     margin:0;
     padding:clamp(56px,7vw,128px);
     overflow:hidden;
-    background:linear-gradient(rgba(3,12,27,.58),rgba(3,12,27,.78)),url("assets/produto-anel-lumiere.png") center/cover no-repeat;
+    background:linear-gradient(90deg,rgba(3,12,27,.82) 0%,rgba(3,12,27,.54) 56%,rgba(3,12,27,.28) 100%),url("assets/hero-wide-2.png") center/cover no-repeat;
   }
   .quality>.section-heading h2 { max-width:540px; }
   .quality-intro { max-width:470px; }
@@ -41,7 +41,7 @@
 }
 @media (max-width: 640px) {
   .quality { padding:0; background:#020711; }
-  .quality>.section-heading { margin:0; padding:240px 24px 52px; background:linear-gradient(0deg,#020711 0%,rgba(2,7,17,.84) 36%,rgba(2,7,17,.14) 100%),url("assets/produto-anel-lumiere.png") center/cover no-repeat; }
+  .quality>.section-heading { margin:0; padding:240px 24px 52px; background:linear-gradient(0deg,#020711 0%,rgba(2,7,17,.84) 36%,rgba(2,7,17,.14) 100%),url("assets/hero-wide-2.png") 72% center/cover no-repeat; }
   .quality>.section-heading h2 { font-size:46px; }
   .quality-grid { margin:0; padding:0 24px 46px; }
   .quality-grid article { padding:28px 0; border-right:0; border-bottom:1px solid #b6914a55; }
