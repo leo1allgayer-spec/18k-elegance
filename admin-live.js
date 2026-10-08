@@ -39,7 +39,7 @@ function fields(type,item={}){if(type==='customer')return `<div class="form-grid
 <div class="field"><label>Preço da peça (R$)</label><input name="price" type="number" min="0" step="0.01" value="${item.price_cents!=null?(item.price_cents/100).toFixed(2):''}" required></div>
 <div class="field"><label>Preço no Pix (R$)</label><input name="pix" type="number" min="0" step="0.01" value="${item.pix_price_cents!=null?(item.pix_price_cents/100).toFixed(2):''}"></div>
 <div class="field"><label>Estoque</label><input name="stock" type="number" min="0" value="${item.stock??0}" required></div>
-<div class="field"><label>Acabamento principal</label><input name="finish" value="${esc(item.finish||'Dourado 18K')}" placeholder="Ex.: Dourado 18K"></div>
+<div class="field"><label>Acabamento principal</label><input name="finish" list="product-finish-options" value="${esc(item.finish||'Dourado 18K')}" placeholder="Ex.: Dourado 18K ou Prata 925"><datalist id="product-finish-options"><option value="Dourado 18K"></option><option value="Prata 925"></option></datalist></div>
 <div class="field full"><label>Descrição de apresentação</label><textarea name="description" placeholder="Texto inicial que apresenta a peça">${esc(item.description||'')}</textarea></div>
 </div></fieldset>
 <fieldset class="product-form-section"><legend>Detalhes da peça</legend><div class="form-grid">
