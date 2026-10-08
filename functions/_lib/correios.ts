@@ -21,7 +21,7 @@ async function correiosToken(env: Env) {
   }
   const basic = btoa(`${env.CORREIOS_USER}:${env.CORREIOS_ACCESS_CODE}`);
   const response = await fetch("https://api.correios.com.br/token/v1/autentica/cartaopostagem", {
-    redirect: 'error', signal: AbortSignal.timeout(15000),
+    redirect: 'manual', signal: AbortSignal.timeout(15000),
     method: "POST",
     headers: { Authorization: `Basic ${basic}`, Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ numero: env.CORREIOS_POSTING_CARD, contrato: env.CORREIOS_CONTRACT, dr: Number(env.CORREIOS_DR) }),
@@ -57,7 +57,7 @@ async function packageFor(env: Env, items: CartItem[]) {
 async function correiosGet(env: Env, base: string, service: string, params: URLSearchParams) {
   const token = await correiosToken(env);
   const response = await fetch(`https://api.correios.com.br/${base}/v1/nacional/${encodeURIComponent(service)}?${params}`, {
-    redirect: 'error', signal: AbortSignal.timeout(15000),
+    redirect: 'manual', signal: AbortSignal.timeout(15000),
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
   });
   const payload: Record<string, unknown> = await response.json<Record<string, unknown>>().catch(() => ({}));
