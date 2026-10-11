@@ -290,7 +290,7 @@ async function deleteTestOrder(env: Env, id: number): Promise<Response> {
 
 async function adminOrders(env: Env): Promise<Response> {
   const result = await env.DB.prepare(`SELECT o.id, o.order_number, o.status, o.total_cents, o.shipping_method,
-    o.tracking_code, o.created_at, c.name AS customer_name, c.email AS customer_email
+    o.tracking_code, o.created_at, o.shipping_address_json, c.name AS customer_name, c.email AS customer_email
     FROM orders o JOIN customers c ON c.id = o.customer_id ORDER BY o.created_at DESC LIMIT 200`).all();
   return json({ ok: true, orders: result.results });
 }

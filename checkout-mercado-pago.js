@@ -43,6 +43,13 @@
       else{radio.disabled=true;price.textContent=city?'Sob consulta':'Informe a cidade';help.textContent='Canoas R$ 20 · Esteio R$ 25 · Sapucaia R$ 30';if(radio.checked)form.querySelector('input[name="shipping"][value="pickup"]')?.click();link.hidden=!city;link.href=`https://wa.me/555194927676?text=${encodeURIComponent(`Olá! Gostaria de cotar a entrega por motoboy para ${cityInput.value.trim()}.`)}`}
     };cityInput.addEventListener('input',update);cityInput.addEventListener('change',update);update();
   }
+  function setupDeliveryPreference(){
+    const panel=form.querySelector('.motoboy-preference');if(!panel)return;
+    const date=form.elements.preferred_delivery_date,time=form.elements.preferred_delivery_time;
+    const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo'}).format(new Date());date.min=today;
+    const update=()=>{const active=form.querySelector('[name="shipping"]:checked')?.value==='motoboy';panel.hidden=!active;date.disabled=!active;time.disabled=!active;};
+    form.addEventListener('change',update);update();
+  }
   async function setupCorreios(){
     const old=form.querySelector('.shipping-coming-soon');if(!old)return;
     try{const health=await fetch('/api/health').then(response=>response.json());if(!health.integrations?.correios)return}catch{return}
@@ -70,7 +77,7 @@
     try{
       const response=await fetch('/api/checkout/mercado-pago',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
         customer:{name:data.name,email:data.email,cpf:data.cpf,phone:data.phone},
-        shipping:{method:data.shipping,service_code:data.shipping_service_code,postal_code:data.postal_code,street:data.street,number:data.number,complement:data.complement,neighborhood:data.neighborhood,city:cityState[0]||'',state:cityState[1]||''},
+        shipping:{method:data.shipping,service_code:data.shipping_service_code,postal_code:data.postal_code,street:data.street,number:data.number,complement:data.complement,neighborhood:data.neighborhood,city:cityState[0]||'',state:cityState[1]||'',preferred_delivery_date:data.shipping==='motoboy'?data.preferred_delivery_date:undefined,preferred_delivery_time:data.shipping==='motoboy'?data.preferred_delivery_time:undefined},
         items,
         payment_method:data.payment_method||"other",
         gift_card_code:String(data.gift_card_code||'').trim()||undefined,
@@ -93,5 +100,5 @@
   }
   next.addEventListener('click',async()=>{const step=window.eleganceCheckout.step;if(step<3){if(validStep(step))window.eleganceCheckout.next();return}if(step===3)await createPayment()});
   back.addEventListener('click',()=>window.eleganceCheckout.back());
-  setupPostalAutofill();setupMotoboy();setupCorreios();prefillAccount();
+  setupPostalAutofill();setupMotoboy();setupDeliveryPreference();setupCorreios();prefillAccount();
 })();

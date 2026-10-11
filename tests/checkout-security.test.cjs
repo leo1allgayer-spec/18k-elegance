@@ -74,6 +74,22 @@ test('Pix preference never attempts to exclude Mercado Pago account balance',asy
  global.fetch=async(url,options)=>{if(url.endsWith('/v1/payment_methods'))return Response.json([{id:'pix',status:'active',payment_type_id:'bank_transfer'},{id:'visa',status:'active',payment_type_id:'credit_card'},{id:'account_money',status:'active',payment_type_id:'account_money'}]);preference=JSON.parse(options.body);return Response.json({id:'pix',sandbox_init_point:'https://example.test/pay'})};
  try{const body=await checkout().json();body.payment_method='pix';assert.equal((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,201);assert.equal(preference.payment_methods.default_payment_method_id,'pix');assert.equal(preference.payment_methods.excluded_payment_types.some(x=>x.id==='account_money'),false);assert.equal(preference.payment_methods.excluded_payment_methods.some(x=>x.id==='account_money'),false);assert.equal(preference.items[0].unit_price,85.5);}finally{global.fetch=original;db.close()}
 });
+test('motoboy delivery preference is validated and stored with the order',async()=>{
+ const {db,env}=fixture(),original=global.fetch;const body=await checkout().json();
+ body.shipping={method:'motoboy',postal_code:'93230250',street:'Rua Teste',number:'10',neighborhood:'Centro',city:'Sapucaia do Sul',state:'RS',preferred_delivery_date:'2099-02-30',preferred_delivery_time:'14:30'};
+ assert.equal((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,400);
+ body.shipping.preferred_delivery_date='2099-12-10';body.shipping.preferred_delivery_time='25:00';
+ assert.equal((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,400);
+ assert.equal(db.prepare('SELECT COUNT(*) n FROM orders').get().n,0);
+ global.fetch=async()=>Response.json({id:'motoboy',sandbox_init_point:'https://example.test/pay'});
+ try{body.shipping.preferred_delivery_time='14:30';assert.equal((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,201);const address=JSON.parse(db.prepare('SELECT shipping_address_json FROM orders').get().shipping_address_json);assert.equal(address.preferred_delivery_date,'2099-12-10');assert.equal(address.preferred_delivery_time,'14:30');}finally{global.fetch=original;db.close()}
+});
+test('printed order displays stored size and motoboy preference',()=>{
+ const vm=require('node:vm'),context={Intl,Date};vm.createContext(context);
+ vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../admin-order-print.js'),'utf8').split('const printButton=')[0],context);
+ const html=vm.runInContext(`printDocument({order:{order_number:'TESTE',created_at:'2026-10-11 23:00:00',status:'paid',shipping_method:'motoboy',shipping_address_json:JSON.stringify({street:'Rua Teste',preferred_delivery_date:'2099-12-10',preferred_delivery_time:'14:30'}),customer_name:'Cliente',total_cents:21900},items:[{product_name:'Corrente',quantity:1,unit_price_cents:21900,personalization_json:JSON.stringify({size:'60 cm'})}]})`,context);
+ assert.ok(html.includes('<b>Tamanho:</b> 60 cm'));assert.ok(html.includes('10/12/2099 às 14:30'));assert.ok(html.includes('confirmar com a loja'));
+});
 test('cart reservations roll back all lines and aggregate repeated variants',async()=>{
  const {db,env}=fixture();order(db,1);
  await assert.rejects(()=>env.DB.batch(reservationStatements(env,1,[{variant_id:1,stock:1},{variant_id:1,stock:1}])),/OUT_OF_STOCK/);

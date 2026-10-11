@@ -13,7 +13,7 @@ type CheckoutBody = {
   shipping?: {
     method?: "correios" | "motoboy" | "pickup"; service_code?: string;
     postal_code?: string; street?: string; number?: string; complement?: string;
-    neighborhood?: string; city?: string; state?: string;
+    neighborhood?: string; city?: string; state?: string; preferred_delivery_date?: string; preferred_delivery_time?: string;
   };
   items?: CheckoutItem[];
   coupon?: string;
@@ -252,7 +252,12 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
   if (total < 1) return apiError("O total do pedido é inválido.");
   const orderNumber = `ELG-${crypto.randomUUID().replaceAll('-','').toUpperCase()}`;
   const expiresAt = new Date(Date.now()+30*60*1000).toISOString();
-  const address = shippingMethod === "pickup" ? null : JSON.stringify(body.shipping || {});
+  const preferredDate=shippingMethod==='motoboy'?String(body.shipping?.preferred_delivery_date||''):'';
+  const preferredTime=shippingMethod==='motoboy'?String(body.shipping?.preferred_delivery_time||''):'';
+  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo'}).format(new Date());
+  if (preferredDate && (!/^\d{4}-\d{2}-\d{2}$/.test(preferredDate)||!Number.isFinite(Date.parse(preferredDate+'T12:00:00Z'))||new Date(preferredDate+'T12:00:00Z').toISOString().slice(0,10)!==preferredDate||preferredDate<today)) return apiError('Revise a data preferida para receber por motoboy.',400,'INVALID_DELIVERY_PREFERENCE');
+  if (preferredTime && (!/^([01]\d|2[0-3]):[0-5]\d$/.test(preferredTime)||!preferredDate)) return apiError('Informe uma data e um horário válidos para a preferência de entrega.',400,'INVALID_DELIVERY_PREFERENCE');
+  const address = shippingMethod === "pickup" ? null : JSON.stringify({...body.shipping,preferred_delivery_date:preferredDate||undefined,preferred_delivery_time:preferredTime||undefined});
   const orderResult = await env.DB.prepare(`INSERT INTO orders(order_number,customer_id,status,subtotal_cents,discount_cents,shipping_cents,total_cents,shipping_method,shipping_address_json,coupon_id)
     VALUES(?,?,'pending_payment',?,?,?,?,?,?,?)`).bind(orderNumber, id, subtotal, discount.cents, shippingCents, total, shippingMethod, address, discount.couponId).run();
   const orderId = Number(orderResult.meta.last_row_id);
