@@ -16,6 +16,8 @@ export async function releaseCheckout(env: Env, orderId: number) {
       AND NOT EXISTS(SELECT 1 FROM finalized_orders WHERE order_id=?)`).bind(orderId,orderId),
     env.DB.prepare(`UPDATE orders SET status='cancelled',updated_at=CURRENT_TIMESTAMP WHERE id=?
       AND NOT EXISTS(SELECT 1 FROM finalized_orders WHERE order_id=?)`).bind(orderId,orderId),
+    env.DB.prepare(`UPDATE personalization_uploads SET order_id=NULL WHERE order_id=?
+      AND NOT EXISTS(SELECT 1 FROM finalized_orders WHERE order_id=?)`).bind(orderId,orderId),
   ]);
 }
 

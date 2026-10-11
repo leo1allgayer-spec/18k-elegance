@@ -25,7 +25,7 @@ type ProductBody = {
   price_cents?: number; pix_price_cents?: number | null; stock?: number;
   image_url?: string; active?: boolean; featured?: boolean; personalizable?: boolean; finish?: string;
   weight_grams?: number; width_cm?: number; height_cm?: number; length_cm?: number;
-  piece_length?: string; material?: string; coating?: string; warranty_months?: number;
+  piece_length?: string; available_sizes?: string[]; material?: string; coating?: string; warranty_months?: number;
   engraving_text_enabled?: boolean; engraving_text_required?: boolean; engraving_name_count_enabled?: boolean; engraving_text_price_cents?: number;
   engraving_image_enabled?: boolean; engraving_image_price_cents?: number;
 };
@@ -163,6 +163,7 @@ async function saveProduct(request: Request, env: Env, id?: number): Promise<Res
   const sku = body.sku?.trim().toUpperCase() || await uniqueSku(env, name);
   const price = integer(body.price_cents, -1);
   const stock = integer(body.stock, 0);
+  if (body.available_sizes !== undefined && (!Array.isArray(body.available_sizes) || body.available_sizes.length > 20 || body.available_sizes.some(size => typeof size !== 'string' || !size.trim() || size.trim().length > 20))) return apiError("Revise os tamanhos disponíveis.");
   if (name.length < 2) return apiError("Informe o nome do produto.");
 
   if (price < 0) return apiError("Informe um preço válido.");
@@ -197,6 +198,7 @@ async function saveProduct(request: Request, env: Env, id?: number): Promise<Res
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(...values).run();
     productId = Number(result.meta.last_row_id);
   }
+  if (body.available_sizes !== undefined) await env.DB.prepare("UPDATE products SET available_sizes=? WHERE id=?").bind(JSON.stringify([...new Set(body.available_sizes.map(size=>size.trim()))]),productId).run();
   const variant = await env.DB.prepare("SELECT id FROM product_variants WHERE product_id = ? ORDER BY id LIMIT 1").bind(productId).first<{id:number}>();
   if (variant) await env.DB.prepare("UPDATE product_variants SET name=?, sku=?, finish=?, price_cents=?, stock=?, active=?, updated_at=CURRENT_TIMESTAMP WHERE id=?")
     .bind("Padrão", `${sku}-PADRAO`, body.finish?.trim() || "Dourado 18K", price, stock, flag(body.active), variant.id).run();

@@ -12,7 +12,7 @@
   }
   function enablePhotoPersonalization(product){
     const panel=document.querySelector('.photo-personalization'),add=document.querySelector('.add-cart'),gallery=document.querySelector('.main-product-image');
-    const textEnabled=Boolean(product.engraving_text_enabled),textRequired=Boolean(product.engraving_text_required),nameCountEnabled=Boolean(product.engraving_name_count_enabled),birthDetails=product.slug==='gargantilha-pingente-coracao-personalizado-com-dados-de-nascimento-do-filho-a',imageEnabled=Boolean(product.engraving_image_enabled),enabled=textEnabled||imageEnabled||nameCountEnabled;
+    const textEnabled=Boolean(product.engraving_text_enabled),textRequired=Boolean(product.engraving_text_required),nameCountEnabled=Boolean(product.engraving_name_count_enabled),birthDetails=/dados.de.nascimento/i.test(product.name||''),imageEnabled=Boolean(product.engraving_image_enabled),enabled=textEnabled||imageEnabled||nameCountEnabled;
     if(!panel||!add)return;
     const textField=panel.querySelector('#engraving-text')?.closest('label'),imageField=panel.querySelector('#engraving-image')?.closest('label');
     panel.hidden=!enabled;if(textField)textField.hidden=!textEnabled;if(imageField)imageField.hidden=!imageEnabled;
@@ -47,8 +47,9 @@
   }
   function enableSizeSelection(product){
     const purchase=document.querySelector('.purchase-card'),add=document.querySelector('.add-cart');
-    if(!purchase||!add||product.category_slug!=='linha-masculina')return;
-    const bracelet=/pulseira/i.test(product.name),sizes=bracelet?['20 cm','21 cm','22 cm']:['60 cm','70 cm'];
+    if(!purchase||!add)return;
+    const bracelet=/pulseira/i.test(product.name),sizes=product.available_sizes!=null?JSON.parse(product.available_sizes):product.category_slug==='linha-masculina'?(bracelet?['20 cm','21 cm','22 cm']:['60 cm','70 cm']):[];
+    if(!sizes.length)return;
     const selector=document.createElement('div');selector.className='size-selector';
     selector.innerHTML=`<b>${bracelet?'Tamanho da pulseira':'Tamanho da corrente'}</b><div class="size-options" role="group" aria-label="Escolha o tamanho">${sizes.map((size,index)=>`<button type="button" class="size-option${index?'':' active'}" data-size="${esc(size)}" aria-pressed="${index?'false':'true'}">${esc(size)}</button>`).join('')}</div>`;
     purchase.insertBefore(selector,purchase.querySelector('.options-row'));add.dataset.size=sizes[0];

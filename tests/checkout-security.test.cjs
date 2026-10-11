@@ -19,6 +19,7 @@ function fixture(){
  for(const file of ['0001_initial','0003_product_personalization','0004_product_personalizable','0008_customer_accounts_first_purchase','0009_product_details_and_personalization','0010_product_reviews','0011_gift_card_checkout','0012_whatsapp_recovery','0018_checkout_security','0019_security_hardening','0020_category_images','0021_admin_mfa','0022_required_personalization_text','0023_name_count_personalization','0024_gift_card_scheduled_delivery','0025_product_review_photos','0026_site_review_submissions','0028_bling_order_exports']){
   db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations',file+'.sql'),'utf8'));
  }
+ db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0030_product_available_sizes.sql'),'utf8'));
  db.exec(`INSERT INTO customers(id,name,email,phone,password_hash,password_salt,account_claimed) VALUES(1,'Original','owner@example.test','51999990000','unchanged','unchanged',0);
  INSERT INTO loyalty_accounts(customer_id) VALUES(1);
  INSERT INTO products(id,name,slug,sku,price_cents) VALUES(1,'Piece','piece','piece',10000);
@@ -52,6 +53,21 @@ test('imported masculine chain requires a valid length and reaches payment with 
  db.exec("UPDATE products SET category_id=(SELECT id FROM categories WHERE slug='linha-masculina'),sku='E18-20260923-1',name='Corrente Cadeado 2mm' WHERE id=1; UPDATE product_variants SET sku='E18-20260923-1-PADRAO' WHERE id=1;");
  global.fetch=async(_url,options)=>{assert.equal(options.redirect,'manual');return Response.json({id:'single-size',sandbox_init_point:'https://example.test/pay'})};
  try{const missing=await createMercadoPagoCheckout(checkout(),env);assert.equal(missing.status,400);assert.equal((await missing.json()).error.code,'INVALID_SIZE');const body=await checkout().json();body.items[0].personalization={size:'70 cm'};assert.equal((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,201)}finally{global.fetch=original;db.close()}
+});
+test('checkout uses only the sizes configured on the product',async()=>{
+ const {db,env}=fixture(),original=global.fetch;db.exec(`UPDATE products SET available_sizes='["45 cm","55 cm"]' WHERE id=1`);
+ const body=await checkout().json();body.items[0].personalization={size:'60 cm'};
+ assert.equal((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,400);
+ global.fetch=async()=>Response.json({id:'custom-size',sandbox_init_point:'https://example.test/pay'});
+ try{body.items[0].personalization.size='55 cm';assert.equal((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,201)}finally{global.fetch=original;db.close()}
+});
+test('refused photo checkout releases its image for a secure retry',async()=>{
+ const {db,env}=fixture(),token='b'.repeat(64),original=global.fetch;
+ db.exec("UPDATE products SET engraving_image_enabled=1 WHERE id=1");
+ db.prepare("INSERT INTO personalization_uploads(id,object_key,product_id,original_name,content_type,size_bytes,owner_hash) VALUES('retry-photo','key',1,'image.png','image/png',100,?)").run(await sha256(token));
+ const body=await checkout().json();body.items[0].personalization={image_upload_id:'retry-photo'};
+ const request=()=>req('/api/checkout/mercado-pago',body,{Cookie:'__Host-elegance-upload='+token});
+ try{global.fetch=async()=>Response.json({}, {status:400});assert.equal((await createMercadoPagoCheckout(request(),env)).status,502);assert.equal(db.prepare("SELECT order_id FROM personalization_uploads WHERE id='retry-photo'").get().order_id,null);global.fetch=async()=>Response.json({id:'retry',sandbox_init_point:'https://example.test/pay'});assert.equal((await createMercadoPagoCheckout(request(),env)).status,201)}finally{global.fetch=original;db.close()}
 });
 test('cart reservations roll back all lines and aggregate repeated variants',async()=>{
  const {db,env}=fixture();order(db,1);
