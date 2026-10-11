@@ -20,6 +20,7 @@ function fixture(){
   db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations',file+'.sql'),'utf8'));
  }
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0030_product_available_sizes.sql'),'utf8'));
+ db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0031_loyalty_rewards.sql'),'utf8'));
  db.exec(`INSERT INTO customers(id,name,email,phone,password_hash,password_salt,account_claimed) VALUES(1,'Original','owner@example.test','51999990000','unchanged','unchanged',0);
  INSERT INTO loyalty_accounts(customer_id) VALUES(1);
  INSERT INTO products(id,name,slug,sku,price_cents) VALUES(1,'Piece','piece','piece',10000);
@@ -89,6 +90,29 @@ test('printed order displays stored size and motoboy preference',()=>{
  vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../admin-order-print.js'),'utf8').split('const printButton=')[0],context);
  const html=vm.runInContext(`printDocument({order:{order_number:'TESTE',created_at:'2026-10-11 23:00:00',status:'paid',shipping_method:'motoboy',shipping_address_json:JSON.stringify({street:'Rua Teste',preferred_delivery_date:'2099-12-10',preferred_delivery_time:'14:30'}),customer_name:'Cliente',total_cents:21900},items:[{product_name:'Corrente',quantity:1,unit_price_cents:21900,personalization_json:JSON.stringify({size:'60 cm'})}]})`,context);
  assert.ok(html.includes('<b>Tamanho:</b> 60 cm'));assert.ok(html.includes('10/12/2099 às 14:30'));assert.ok(html.includes('confirmar com a loja'));
+});
+test('tenth paid order issues one loyalty reward even with repeated finalization',async()=>{
+ const {db,env}=fixture();db.exec('UPDATE loyalty_accounts SET purchase_count=9 WHERE customer_id=1');order(db,1);await finalizeOrder(env,1);await finalizeOrder(env,1);
+ assert.equal(db.prepare('SELECT purchase_count FROM loyalty_accounts').get().purchase_count,10);assert.equal(db.prepare("SELECT COUNT(*) n FROM loyalty_rewards WHERE kind='loyalty'").get().n,1);assert.equal(db.prepare('SELECT rewards_issued FROM loyalty_accounts').get().rewards_issued,1);db.close();
+});
+test('birthday reward is issued once in the Brazil calendar year and only on the day',async()=>{
+ const {db,env}=fixture(),{loyaltyOverview,brazilDate}=require('../functions/_lib/loyalty.ts');const today=brazilDate();db.prepare('UPDATE customers SET birth_date=? WHERE id=1').run('1990-'+today.slice(5));
+ const first=await loyaltyOverview(env,1);await loyaltyOverview(env,1);assert.equal(first.rewards[0].percent,10);assert.equal(first.rewards[0].expires_on,today);assert.equal(db.prepare("SELECT COUNT(*) n FROM loyalty_rewards WHERE kind='birthday'").get().n,1);
+ db.exec("UPDATE customers SET birth_date='1990-01-01' WHERE id=1");await loyaltyOverview(env,1);assert.equal(db.prepare("SELECT COUNT(*) n FROM loyalty_rewards WHERE kind='birthday'").get().n,1);db.close();
+});
+test('loyalty reward requires the matching account, releases on refusal and is consumed once',async()=>{
+ const {db,env}=fixture(),original=global.fetch;db.exec("UPDATE customers SET account_claimed=1 WHERE id=1;UPDATE loyalty_accounts SET purchase_count=10 WHERE customer_id=1;UPDATE product_variants SET stock=3");
+ const session=await createSession(env,1,'customer'),body=await checkout().json();const signed=()=>req('/api/checkout/mercado-pago',body,{Cookie:'elegance_session='+session.token});let amount;
+ global.fetch=async(_url,options)=>{amount=JSON.parse(options.body).items[0].unit_price;return Response.json({}, {status:400})};
+ try{assert.equal((await createMercadoPagoCheckout(signed(),env)).status,502);assert.equal(amount,85);assert.equal(db.prepare('SELECT status FROM loyalty_reward_uses').get().status,'released');
+ global.fetch=async(_url,options)=>{amount=JSON.parse(options.body).items[0].unit_price;return Response.json({id:crypto.randomUUID(),sandbox_init_point:'https://example.test/pay'})};
+ const response=await createMercadoPagoCheckout(signed(),env);assert.equal(response.status,201);assert.equal(amount,85);const held=db.prepare("SELECT order_id FROM loyalty_reward_uses WHERE status='held'").get().order_id;await finalizeOrder(env,held);await finalizeOrder(env,held);assert.equal(db.prepare("SELECT COUNT(*) n FROM loyalty_reward_uses WHERE status='spent'").get().n,1);
+ assert.equal((await createMercadoPagoCheckout(signed(),env)).status,201);assert.equal(amount,100);
+ }finally{global.fetch=original;db.close()}
+});
+test('guest cannot claim a loyalty reward by entering its owner email',async()=>{
+ const {db,env}=fixture(),original=global.fetch;db.exec('UPDATE loyalty_accounts SET purchase_count=10 WHERE customer_id=1');let amount;global.fetch=async(_url,options)=>{amount=JSON.parse(options.body).items[0].unit_price;return Response.json({id:'guest',sandbox_init_point:'https://example.test/pay'})};
+ try{assert.equal((await createMercadoPagoCheckout(checkout(),env)).status,201);assert.equal(amount,90);assert.equal(db.prepare('SELECT COUNT(*) n FROM loyalty_reward_uses').get().n,0)}finally{global.fetch=original;db.close()}
 });
 test('cart reservations roll back all lines and aggregate repeated variants',async()=>{
  const {db,env}=fixture();order(db,1);

@@ -10,6 +10,7 @@ export function reservationStatements(env: Env, orderId: number, items: {variant
 export async function releaseCheckout(env: Env, orderId: number) {
   // Release only after a definitive refusal or confirmation of an expired checkout.
   await env.DB.batch([
+    env.DB.prepare(`UPDATE loyalty_reward_uses SET status='released' WHERE order_id=? AND status='held' AND NOT EXISTS(SELECT 1 FROM finalized_orders WHERE order_id=?)`).bind(orderId,orderId),
     env.DB.prepare(`UPDATE stock_reservations SET status='released' WHERE order_id=? AND status='held'
       AND NOT EXISTS(SELECT 1 FROM finalized_orders WHERE order_id=?)`).bind(orderId,orderId),
     env.DB.prepare(`UPDATE gift_card_uses SET status='released' WHERE order_id=? AND status='reserved'

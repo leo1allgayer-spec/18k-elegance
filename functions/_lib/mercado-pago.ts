@@ -6,6 +6,7 @@ import { calculateCorreiosQuotes } from "./correios";
 import { giftCardBalance, syncGiftPayment } from "./gift-cards";
 import { reservationStatements, releaseCheckout, finalizeOrder } from './checkout-stock';
 import { exportPaidOrderToBling } from './bling-orders';
+import { loyaltyOverview } from './loyalty';
 
 type CheckoutItem = { product_id?: number; variant_id?: number; quantity?: number; personalization?: { engraving_text?: string; name_count?: number; image_upload_id?: string; image_name?: string; size?: string } };
 type CheckoutBody = {
@@ -206,6 +207,12 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
     return apiError(code === "FIRST_PURCHASE_USED" ? "O cupom de primeira compra já foi utilizado." : "O cupom informado não é válido.", 400, code === 'FIRST_PURCHASE_USED' ? code : 'INVALID_COUPON');
   }
   const shippingMethod = body.shipping?.method || "pickup";
+  let loyaltyRewardId:number|null=null;
+  const benefitCustomer=await currentCustomer(request,env);
+  if(!body.coupon?.trim()&&benefitCustomer?.id===id){
+    const loyalty=await loyaltyOverview(env,id),reward=loyalty.rewards.find(r=>r.status==='available');
+    if(reward){const rewardCents=Math.floor(subtotal*reward.percent/100);if(rewardCents>discount.cents){loyaltyRewardId=reward.id;discount={cents:rewardCents,couponId:null,code:reward.kind==='loyalty'?'FIDELIDADE15':'ANIVERSARIO10'};}}
+  }
   if (shippingMethod !== 'pickup') {
     const address=body.shipping!;
     if (digits(address.postal_code||'').length!==8 || !/^[A-Za-z]{2}$/.test(address.state||'') ||
@@ -286,11 +293,13 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
   try { await env.DB.batch([
     env.DB.prepare('INSERT INTO checkout_security(order_id,expires_at,access_token_hash) VALUES(?,?,?)').bind(orderId,expiresAt,await sha256(accessToken)),
     ...reservationStatements(env,orderId,products),
+    ...(loyaltyRewardId?[env.DB.prepare('INSERT INTO loyalty_reward_uses(reward_id,order_id) VALUES(?,?)').bind(loyaltyRewardId,orderId)]:[]),
     ...products.map(item => env.DB.prepare(`INSERT INTO order_items(order_id,product_id,variant_id,product_name,sku,unit_price_cents,quantity,personalization_json,personalization_fee_cents)
       VALUES(?,?,?,?,?,?,?,?,?)`).bind(orderId, item.product_id, item.variant_id, item.name, item.sku, item.unit_price_cents, item.stock, item.personalization_json, item.personalization_fee_cents)),
     env.DB.prepare("INSERT INTO payments(order_id,provider,status,amount_cents) VALUES(?,?,'pending',?)").bind(orderId, payable ? "mercado_pago" : "gift_card", payable),
   ]); } catch (error) {
     await releaseCheckout(env,orderId);
+    if(String(error).includes('loyalty_reward')||String(error).includes('INVALID_LOYALTY_REWARD'))return apiError('O benefício já está vinculado a outro pagamento. Confira seus pedidos.',409,'LOYALTY_REWARD_UNAVAILABLE');
     if (String(error).includes('OUT_OF_STOCK')) return apiError('Um produto acabou de ficar indisponível. Atualize a sacola.',409,'OUT_OF_STOCK');
     if (String(error).includes('INVALID_PERSONALIZATION_IMAGE')) return apiError('Envie novamente a imagem da personalização.',409,'INVALID_PERSONALIZATION_IMAGE');
     throw error;

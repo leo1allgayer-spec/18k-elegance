@@ -1,4 +1,5 @@
 import { adminMfa, verifyAdminFactor, mfaEnabled } from "../_lib/admin-mfa";
+import { loyaltyOverview } from '../_lib/loyalty';
 import type { Env } from "../_lib/types";
 import { apiError, json, normalizeEmail, readJson } from "../_lib/http";
 import { clearSessionCookie, createSession, currentCustomer, deleteCurrentSession, hashPassword, sessionCookie, sha256, verifyPassword, upgradePassword } from "../_lib/auth";
@@ -432,7 +433,7 @@ async function accountOverview(request: Request, env: Env): Promise<Response> {
   const [address, orders, loyalty, paid] = await Promise.all([
     env.DB.prepare("SELECT id,postal_code,street,number,complement,neighborhood,city,state FROM addresses WHERE customer_id=? ORDER BY is_default DESC,id DESC LIMIT 1").bind(customer.id).first(),
     env.DB.prepare("SELECT order_number,status,total_cents,shipping_method,tracking_code,created_at FROM orders WHERE customer_id=? ORDER BY created_at DESC LIMIT 30").bind(customer.id).all(),
-    env.DB.prepare("SELECT purchase_count,rewards_issued FROM loyalty_accounts WHERE customer_id=?").bind(customer.id).first(),
+    loyaltyOverview(env,customer.id),
     env.DB.prepare("SELECT id FROM orders WHERE customer_id=? AND status IN ('paid','preparing','shipped','delivered','refunded') LIMIT 1").bind(customer.id).first(),
   ]);
   return json({ ok: true, customer, address: address || null, orders: orders.results, loyalty: loyalty || { purchase_count: 0, rewards_issued: 0 }, first_purchase_eligible: !paid });
@@ -627,6 +628,11 @@ async function route(request: Request, env: Env): Promise<Response> {
     const admin = await requireAdmin(request, env);
     if (!admin) return apiError("Acesso restrito à administração.", 403, "FORBIDDEN");
     if (method === "GET" && parts[1] === "dashboard") return adminDashboard(env);
+    if (method === "GET" && parts[1] === "loyalty") {
+      const customers=await env.DB.prepare("SELECT c.id,c.name,c.email,c.birth_date,l.purchase_count,l.rewards_issued FROM loyalty_accounts l JOIN customers c ON c.id=l.customer_id ORDER BY l.purchase_count DESC,c.name LIMIT 500").all<{id:number;name:string;email:string;birth_date:string|null;purchase_count:number;rewards_issued:number}>();
+      const participants=await Promise.all(customers.results.map(async c=>({...c,...await loyaltyOverview(env,c.id)})));
+      return json({ok:true,participants});
+    }
     if (method === "GET" && parts.join("/") === "admin/shipping/origin") return shippingOrigin(env);
     if (method === "PUT" && parts.join("/") === "admin/shipping/origin") return saveShippingOrigin(request, env);
     if (method === "GET" && parts.join("/") === "admin/integrations/bling/connect") return blingConnect(request, env, admin);

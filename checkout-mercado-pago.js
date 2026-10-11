@@ -96,6 +96,7 @@
       fill('postal_code',address.postal_code);fill('street',address.street);fill('number',address.number);fill('complement',address.complement);fill('neighborhood',address.neighborhood);
       fill('city_state',[address.city,address.state].filter(Boolean).join(' - '));
       if(data.first_purchase_eligible){message.textContent='Seu desconto de primeira compra será aplicado automaticamente ao pagamento.';}
+      const reward=(data.loyalty?.rewards||[]).find(r=>r.status==='available');if(reward)message.textContent=`Você tem ${reward.percent}% de ${reward.kind==='loyalty'?'fidelidade':'aniversário'} disponível. Será aplicado automaticamente se finalizar sem cupom. O frete não recebe desconto.`;
     }catch{}
   }
   next.addEventListener('click',async()=>{const step=window.eleganceCheckout.step;if(step<3){if(validStep(step))window.eleganceCheckout.next();return}if(step===3)await createPayment()});
