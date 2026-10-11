@@ -23,7 +23,7 @@ type CheckoutBody = {
 
 type ProductRow = {
   product_id: number; variant_id: number; name: string; sku: string;
-  unit_price_cents: number; stock: number; category_slug: string | null; personalizable: number;
+  unit_price_cents: number; stock: number; category_slug: string | null; personalizable: number; piece_length: string | null;
   engraving_text_enabled: number; engraving_text_required: number; engraving_name_count_enabled: number; engraving_text_price_cents: number; engraving_image_enabled: number; engraving_image_price_cents: number;
   personalization_json: string | null; personalization_fee_cents: number; image_upload_id: string | null;
 };
@@ -97,7 +97,7 @@ async function resolveItems(env: Env, items: CheckoutItem[], owner: string): Pro
       throw new Error("INVALID_CART");
     }
     const row = await env.DB.prepare(`SELECT p.id AS product_id, v.id AS variant_id, p.name, v.sku,
-      COALESCE(v.price_cents,p.price_cents) AS unit_price_cents, v.stock, c.slug AS category_slug, p.personalizable,
+      COALESCE(v.price_cents,p.price_cents) AS unit_price_cents, v.stock, c.slug AS category_slug, p.personalizable, p.piece_length,
       p.engraving_text_enabled, p.engraving_text_required, p.engraving_name_count_enabled, p.engraving_text_price_cents, p.engraving_image_enabled, p.engraving_image_price_cents
       FROM products p JOIN product_variants v ON v.product_id=p.id LEFT JOIN categories c ON c.id=p.category_id
       WHERE p.id=? AND v.id=? AND p.active=1 AND v.active=1`).bind(item.product_id, item.variant_id).first<ProductRow>();
@@ -106,7 +106,8 @@ async function resolveItems(env: Env, items: CheckoutItem[], owner: string): Pro
     const nameCount = Number(item.personalization?.name_count || 0);
     const imageUploadId = item.personalization?.image_upload_id?.trim() || "";
     const size = item.personalization?.size?.trim() || "";
-    const allowedSizes = row.category_slug === "linha-masculina" ? (/pulseira/i.test(row.name) ? ["20 cm", "21 cm", "22 cm"] : ["60 cm", "70 cm"]) : [];
+    const requiresSize = row.category_slug === "linha-masculina" && !(row.sku.startsWith("E18-20260923-") && !row.piece_length);
+    const allowedSizes = requiresSize ? (/pulseira/i.test(row.name) ? ["20 cm", "21 cm", "22 cm"] : ["60 cm", "70 cm"]) : [];
     if (allowedSizes.length && !allowedSizes.includes(size)) throw new Error("INVALID_SIZE");
     if (!allowedSizes.length && size) throw new Error("INVALID_SIZE");
     if (engravingText && !row.engraving_text_enabled) throw new Error("INVALID_PERSONALIZATION_TEXT");
@@ -183,6 +184,7 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
   catch (error) {
     const code = error instanceof Error ? error.message : "INVALID_CART";
     if (code === "OUT_OF_STOCK") return apiError("Um produto ficou sem estoque. Atualize a sacola.", 409, code);
+    if (code === "INVALID_SIZE") return apiError("Revise o tamanho da peça na página do produto e adicione-a novamente à sacola.", 400, code);
     if (code === "REQUIRED_PERSONALIZATION_TEXT") return apiError("Preencha os dados obrigatórios da personalização antes de finalizar.", 400, code);
     if (code === "INVALID_PERSONALIZATION_NAMES") return apiError("Informe a quantidade selecionada de nomes, separados por vírgula e na ordem da gravação.", 400, code);
     if (code.startsWith("INVALID_PERSONALIZATION")) return apiError("Revise os dados da fotogravação.", 400, code);

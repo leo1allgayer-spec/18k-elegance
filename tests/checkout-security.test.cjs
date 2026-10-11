@@ -47,6 +47,12 @@ test('checkout preserves existing identity, reserves last unit, and rejects comp
   const c=db.prepare('SELECT name,phone FROM customers').get();assert.equal(c.name,'Original');assert.equal(c.phone,'51999990000');assert.equal(db.prepare('SELECT stock FROM product_variants').get().stock,0);
  }finally{global.fetch=original;db.close()}
 });
+test('single-size imported masculine piece reaches payment without a size selection',async()=>{
+ const {db,env}=fixture(),original=global.fetch;
+ db.exec("UPDATE products SET category_id=(SELECT id FROM categories WHERE slug='linha-masculina'),sku='E18-20260923-1',name='Corrente Cadeado 2mm' WHERE id=1; UPDATE product_variants SET sku='E18-20260923-1-PADRAO' WHERE id=1;");
+ global.fetch=async()=>Response.json({id:'single-size',sandbox_init_point:'https://example.test/pay'});
+ try{assert.equal((await createMercadoPagoCheckout(checkout(),env)).status,201)}finally{global.fetch=original;db.close()}
+});
 test('cart reservations roll back all lines and aggregate repeated variants',async()=>{
  const {db,env}=fixture();order(db,1);
  await assert.rejects(()=>env.DB.batch(reservationStatements(env,1,[{variant_id:1,stock:1},{variant_id:1,stock:1}])),/OUT_OF_STOCK/);
