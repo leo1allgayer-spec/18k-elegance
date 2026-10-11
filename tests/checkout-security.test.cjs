@@ -69,6 +69,11 @@ test('refused photo checkout releases its image for a secure retry',async()=>{
  const request=()=>req('/api/checkout/mercado-pago',body,{Cookie:'__Host-elegance-upload='+token});
  try{global.fetch=async()=>Response.json({}, {status:400});assert.equal((await createMercadoPagoCheckout(request(),env)).status,502);assert.equal(db.prepare("SELECT order_id FROM personalization_uploads WHERE id='retry-photo'").get().order_id,null);global.fetch=async()=>Response.json({id:'retry',sandbox_init_point:'https://example.test/pay'});assert.equal((await createMercadoPagoCheckout(request(),env)).status,201)}finally{global.fetch=original;db.close()}
 });
+test('Pix preference never attempts to exclude Mercado Pago account balance',async()=>{
+ const {db,env}=fixture(),original=global.fetch;let preference;
+ global.fetch=async(url,options)=>{if(url.endsWith('/v1/payment_methods'))return Response.json([{id:'pix',status:'active',payment_type_id:'bank_transfer'},{id:'visa',status:'active',payment_type_id:'credit_card'},{id:'account_money',status:'active',payment_type_id:'account_money'}]);preference=JSON.parse(options.body);return Response.json({id:'pix',sandbox_init_point:'https://example.test/pay'})};
+ try{const body=await checkout().json();body.payment_method='pix';assert.equal((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,201);assert.equal(preference.payment_methods.default_payment_method_id,'pix');assert.equal(preference.payment_methods.excluded_payment_types.some(x=>x.id==='account_money'),false);assert.equal(preference.payment_methods.excluded_payment_methods.some(x=>x.id==='account_money'),false);assert.equal(preference.items[0].unit_price,85.5);}finally{global.fetch=original;db.close()}
+});
 test('cart reservations roll back all lines and aggregate repeated variants',async()=>{
  const {db,env}=fixture();order(db,1);
  await assert.rejects(()=>env.DB.batch(reservationStatements(env,1,[{variant_id:1,stock:1},{variant_id:1,stock:1}])),/OUT_OF_STOCK/);

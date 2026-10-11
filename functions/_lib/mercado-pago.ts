@@ -56,7 +56,7 @@ async function mercadoPago<T>(env: Env, path: string, init: RequestInit = {}): P
   });
   const payload: Record<string, unknown> = await response.json<Record<string, unknown>>().catch(() => ({}));
   if (!response.ok) {
-    console.error(JSON.stringify({ event: "mercado_pago_error", path, status: response.status, cause: payload.cause }));
+    console.error(JSON.stringify({ event: "mercado_pago_error", path, status: response.status, code: payload.error, message: payload.message, cause: payload.cause }));
     throw new Error(`MERCADO_PAGO_${response.status}`);
   }
   return payload as T;
@@ -243,8 +243,8 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
       if (!methods.some(method=>method.id==="pix"&&method.status==="active")) return apiError("Pix indisponível no momento. Selecione outra forma de pagamento.",503);
       paymentMethods = {
         installments:1,default_payment_method_id:"pix",
-        excluded_payment_methods:methods.filter(method=>method.id&&method.id!=="pix").map(method=>({id:method.id!})),
-        excluded_payment_types:[...new Set([...methods.map(method=>method.payment_type_id).filter((type):type is string=>Boolean(type)&&type!=="bank_transfer"),"account_money"])].map(id=>({id}))
+        excluded_payment_methods:methods.filter(method=>method.id&&method.id!=="pix"&&method.payment_type_id!=="account_money").map(method=>({id:method.id!})),
+        excluded_payment_types:[...new Set(methods.map(method=>method.payment_type_id).filter((type):type is string=>Boolean(type)&&type!=="bank_transfer"&&type!=="account_money"))].map(id=>({id}))
       };
     } catch { return apiError("Não foi possível confirmar a disponibilidade do Pix. Tente novamente.",503); }
   }
