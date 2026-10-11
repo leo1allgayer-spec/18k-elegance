@@ -106,7 +106,7 @@ async function resolveItems(env: Env, items: CheckoutItem[], owner: string): Pro
     const nameCount = Number(item.personalization?.name_count || 0);
     const imageUploadId = item.personalization?.image_upload_id?.trim() || "";
     const size = item.personalization?.size?.trim() || "";
-    const requiresSize = row.category_slug === "linha-masculina" && !(row.sku.startsWith("E18-20260923-") && !row.piece_length);
+    const requiresSize = row.category_slug === "linha-masculina";
     const allowedSizes = requiresSize ? (/pulseira/i.test(row.name) ? ["20 cm", "21 cm", "22 cm"] : ["60 cm", "70 cm"]) : [];
     if (allowedSizes.length && !allowedSizes.includes(size)) throw new Error("INVALID_SIZE");
     if (!allowedSizes.length && size) throw new Error("INVALID_SIZE");
