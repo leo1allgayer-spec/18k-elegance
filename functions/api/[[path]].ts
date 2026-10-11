@@ -357,7 +357,11 @@ function pathParts(request: Request): string[] {
 }
 
 async function categories(env: Env): Promise<Response> {
-  const result = await env.DB.prepare("SELECT id, name, slug, description, image_url FROM categories WHERE active = 1 ORDER BY sort_order, name").all();
+  const result = await env.DB.prepare(`SELECT c.id,c.name,c.slug,c.description,
+    COALESCE(NULLIF(c.image_url,''),(SELECT pi.url FROM products p JOIN product_images pi ON pi.product_id=p.id
+      WHERE p.category_id=c.id AND p.active=1 AND pi.url<>''
+      ORDER BY p.featured DESC,p.updated_at DESC,p.id DESC,pi.sort_order,pi.id LIMIT 1)) AS image_url
+    FROM categories c WHERE c.active=1 ORDER BY c.sort_order,c.name`).all();
   return json({ ok: true, categories: result.results }, 200, { "Cache-Control": "no-cache" });
 }
 
