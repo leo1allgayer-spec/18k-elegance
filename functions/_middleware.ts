@@ -45,6 +45,10 @@ const PUBLIC_PAGES: Record<string, { title: string; description: string; image?:
     title: "Clube fidelidade Elegance 18K | Benefícios em semijoias",
     description: "Conheça o Clube Elegance: acumule compras e receba benefícios exclusivos em sua próxima semijoia.",
   },
+  "/politicas": {
+    title: "Políticas e atendimento | Elegance 18K",
+    description: "Informações sobre compras, trocas, devoluções e privacidade da Elegance 18K.",
+  },
 };
 
 const NOINDEX_PATHS = new Set([

@@ -15,6 +15,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env }) => {
     ["/conservacao", "0.6", "monthly"],
     ["/medidas", "0.6", "monthly"],
     ["/fidelidade", "0.5", "monthly"],
+    ["/politicas", "0.3", "monthly"],
   ];
   const entries = [
     ...staticUrls.map(([path, priority, frequency]) => `<url><loc>${ORIGIN}${path}</loc><changefreq>${frequency}</changefreq><priority>${priority}</priority></url>`),

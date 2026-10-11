@@ -46,7 +46,7 @@ async function mercadoPago<T>(env: Env, path: string, init: RequestInit = {}): P
   if (!token) throw new Error("MERCADO_PAGO_NOT_CONFIGURED");
   const response = await fetch(`https://api.mercadopago.com${path}`, {
     ...init,
-    redirect: 'error',
+    redirect: 'manual',
     signal: AbortSignal.timeout(15000),
     headers: {
       Authorization: `Bearer ${token}`,

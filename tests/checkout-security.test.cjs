@@ -50,7 +50,7 @@ test('checkout preserves existing identity, reserves last unit, and rejects comp
 test('single-size imported masculine piece reaches payment without a size selection',async()=>{
  const {db,env}=fixture(),original=global.fetch;
  db.exec("UPDATE products SET category_id=(SELECT id FROM categories WHERE slug='linha-masculina'),sku='E18-20260923-1',name='Corrente Cadeado 2mm' WHERE id=1; UPDATE product_variants SET sku='E18-20260923-1-PADRAO' WHERE id=1;");
- global.fetch=async()=>Response.json({id:'single-size',sandbox_init_point:'https://example.test/pay'});
+ global.fetch=async(_url,options)=>{assert.equal(options.redirect,'manual');return Response.json({id:'single-size',sandbox_init_point:'https://example.test/pay'})};
  try{assert.equal((await createMercadoPagoCheckout(checkout(),env)).status,201)}finally{global.fetch=original;db.close()}
 });
 test('cart reservations roll back all lines and aggregate repeated variants',async()=>{

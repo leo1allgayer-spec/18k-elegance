@@ -25,7 +25,7 @@ export async function exportPaidOrderToBling(env: Env, orderId: number): Promise
   };
   try {
     const token = await blingAccessToken(env);
-    const response = await fetch('https://api.bling.com.br/Api/v3/pedidos/vendas', { method:'POST', redirect:'error', signal:AbortSignal.timeout(15000), headers:{Authorization:`Bearer ${token}`,Accept:'application/json','Content-Type':'application/json'}, body:JSON.stringify(payload) });
+    const response = await fetch('https://api.bling.com.br/Api/v3/pedidos/vendas', { method:'POST', redirect:'manual', signal:AbortSignal.timeout(15000), headers:{Authorization:`Bearer ${token}`,Accept:'application/json','Content-Type':'application/json'}, body:JSON.stringify(payload) });
     const body: { data?: { id?: number }; error?: unknown } = await response.json<{data?:{id?:number};error?:unknown}>().catch(()=>({}));
     if (!response.ok || !body.data?.id) return mark(env, orderId, 'error', `Bling recusou o pedido (HTTP ${response.status}).`);
     await env.DB.prepare("UPDATE bling_order_exports SET status='sent',bling_order_id=?,error=NULL,updated_at=CURRENT_TIMESTAMP WHERE order_id=?").bind(body.data.id,orderId).run();
