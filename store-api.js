@@ -73,24 +73,11 @@
   }
   async function detail(){
     const root=document.querySelector('.product-detail');if(!root)return;
-    const requestedSlug=new URLSearchParams(location.search).get('produto');if(!requestedSlug)return;
+    const loadStatus=document.querySelector('#product-load-status');
+    const requestedSlug=new URLSearchParams(location.search).get('produto');if(!requestedSlug){if(loadStatus)loadStatus.textContent='Escolha uma peça no catálogo para ver os detalhes.';return;}
     const legacySlugs={'brinco-aura':'brinco-geometrico-aura','anel-lumiere':'anel-tres-aros-lumiere','colar-elise':'colar-ponto-de-luz-elise','pulseira-essencia':'pulseira-essencia'};
     try{
-      let productData;
-      try{productData=await api(`products/${encodeURIComponent(legacySlugs[requestedSlug]||requestedSlug)}`)}
-      catch{
-        const fallbackName=document.querySelector('#detail-name')?.textContent?.trim()||requestedSlug.replaceAll('-',' ');
-        const listing=await api(`products?q=${encodeURIComponent(fallbackName)}`),match=listing.products?.[0];
-        if(!match){
-          const available=await api('products');
-          const reference=available.products?.find(item=>Number(item.stock)>0)||available.products?.[0];
-          if(!reference)throw new Error('Produto não encontrado no catálogo');
-          const referenceData=await api(`products/${encodeURIComponent(reference.slug)}`);
-          enableProductShipping(referenceData.product,referenceData.product.variants?.[0]);
-          return;
-        }
-        productData=await api(`products/${encodeURIComponent(match.slug)}`);
-      }
+      const productData=await api(`products/${encodeURIComponent(legacySlugs[requestedSlug]||requestedSlug)}`);
       const {product}=productData,image=product.images?.[0]?.url||'assets/logo-oficial.png',variant=product.variants?.[0];
       document.title=`${product.name} | Elegance 18K`;document.querySelector('#detail-name').textContent=product.name;document.querySelector('#detail-price').textContent=money(product.price_cents);
       const main=document.querySelector('#detail-image');main.src=image;main.alt=product.name;
@@ -121,7 +108,8 @@
       const wish=document.querySelector('.wish-button');if(wish){wish.dataset.favorite=product.slug;const active=getFavorites().includes(product.slug);wish.classList.toggle('active',active);wish.textContent=active?'♥︎ Remover dos favoritos':'♡ Adicionar aos favoritos';wish.setAttribute('aria-pressed',String(active));bindFavorites(document.querySelector('.purchase-card'))}
       enableSizeSelection(product);
       enableProductShipping(product,variant);
-    }catch(error){console.warn('Produto usando conteúdo de apresentação.',error)}
+      root.hidden=false;root.setAttribute('aria-busy','false');if(loadStatus)loadStatus.hidden=true;
+    }catch(error){root.hidden=true;root.setAttribute('aria-busy','false');if(loadStatus){loadStatus.textContent='Não foi possível carregar esta peça. Atualize a página ou escolha uma peça no catálogo.';loadStatus.hidden=false;}console.warn('Não foi possível carregar a peça selecionada.',error)}
   }
   async function homeCategories(){
     const grid=document.querySelector('.shop-category-grid');
