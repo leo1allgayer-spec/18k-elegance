@@ -9,6 +9,7 @@ import { exportPaidOrderToBling } from './bling-orders';
 import { loyaltyOverview } from './loyalty';
 import { sendLoyaltyNotification } from './loyalty-notifications';
 import { motoboyPrice } from './motoboy';
+import { validate as validateMotoboyDate } from '../../motoboy-calendar';
 
 type CheckoutItem = { product_id?: number; variant_id?: number; quantity?: number; personalization?: { engraving_text?: string; name_count?: number; image_upload_id?: string; image_name?: string; size?: string } };
 type CheckoutBody = {
@@ -263,6 +264,8 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
   const expiresAt = new Date(Date.now()+30*60*1000).toISOString();
   const preferredDate=shippingMethod==='motoboy'?String(body.shipping?.preferred_delivery_date||''):'';
   const preferredTime=shippingMethod==='motoboy'?String(body.shipping?.preferred_delivery_time||''):'';
+  const deliveryError=validateMotoboyDate(preferredDate,preferredTime);
+  if(deliveryError)return apiError(deliveryError,400,'INVALID_DELIVERY_PREFERENCE');
   const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo'}).format(new Date());
   if (preferredDate && (!/^\d{4}-\d{2}-\d{2}$/.test(preferredDate)||!Number.isFinite(Date.parse(preferredDate+'T12:00:00Z'))||new Date(preferredDate+'T12:00:00Z').toISOString().slice(0,10)!==preferredDate||preferredDate<today)) return apiError('Revise a data preferida para receber por motoboy.',400,'INVALID_DELIVERY_PREFERENCE');
   if (preferredTime && (!/^([01]\d|2[0-3]):[0-5]\d$/.test(preferredTime)||!preferredDate)) return apiError('Informe uma data e um horário válidos para a preferência de entrega.',400,'INVALID_DELIVERY_PREFERENCE');

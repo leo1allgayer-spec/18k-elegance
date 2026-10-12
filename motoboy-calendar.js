@@ -1,0 +1,11 @@
+(function(root){
+  const fixed=['01-01','04-21','05-01','09-07','09-20','10-12','11-02','11-15','11-20','12-08','12-25'];
+  const iso=date=>date.toISOString().slice(0,10);
+  function easter(year){const a=year%19,b=Math.floor(year/100),c=year%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),month=Math.floor((h+l-7*m+114)/31),day=(h+l-7*m+114)%31+1;return new Date(Date.UTC(year,month-1,day,12));}
+  function holidays(year){const dates=new Set(fixed.map(day=>year+'-'+day));const sunday=easter(year);for(const offset of [-2,60]){const date=new Date(sunday);date.setUTCDate(date.getUTCDate()+offset);dates.add(iso(date));}return dates;}
+  function clock(now=new Date()){const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(now).map(p=>[p.type,p.value]));return {date:parts.year+'-'+parts.month+'-'+parts.day,time:parts.hour+':'+parts.minute};}
+  function validDay(date){if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return false;const parsed=new Date(date+'T12:00:00Z');return Number.isFinite(parsed.getTime())&&iso(parsed)===date&&parsed.getUTCDay()!==0&&!holidays(parsed.getUTCFullYear()).has(date);}
+  function availableDays(now=new Date(),days=90){const current=clock(now),date=new Date(current.date+'T12:00:00Z'),result=[];for(let i=0;i<days;i++){const day=iso(date);if(validDay(day)&&(day!==current.date||current.time<'18:00'))result.push(day);date.setUTCDate(date.getUTCDate()+1);}return result;}
+  function validate(date,time,now=new Date()){if(!date&&!time)return '';const current=clock(now);if(!date||!validDay(date)||date<current.date||(date===current.date&&current.time>='18:00'))return 'Escolha um dia disponível: segunda a sábado, exceto feriados de Sapucaia do Sul.';if(time&&(!/^(?:09|1[0-7]):[0-5]\d$|^18:00$/.test(time)||(date===current.date&&time<current.time)))return 'Escolha um horário entre 9h e 18h, que ainda não tenha passado (horário de Brasília).';return '';}
+  const api={holidays,clock,validDay,availableDays,validate};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.MotoboyCalendar=api;
+})(typeof window==='undefined'?globalThis:window);

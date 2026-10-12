@@ -48,9 +48,12 @@
   function setupDeliveryPreference(){
     const panel=form.querySelector('.motoboy-preference');if(!panel)return;
     const date=form.elements.preferred_delivery_date,time=form.elements.preferred_delivery_time;
-    const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo'}).format(new Date());date.min=today;
-    const update=()=>{const active=form.querySelector('[name="shipping"]:checked')?.value==='motoboy';panel.hidden=!active;date.disabled=!active;time.disabled=!active;};
-    form.addEventListener('change',update);update();
+    const calendar=window.MotoboyCalendar;
+    const label=value=>new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric',timeZone:'UTC'}).format(new Date(value+'T12:00:00Z'));
+    const refreshDates=()=>{const selected=date.value,days=calendar.availableDays();date.replaceChildren(new Option('Escolha um dia disponível (opcional)',''),...days.map(day=>new Option(label(day),day)));if(days.includes(selected))date.value=selected;panel.querySelector('.motoboy-next-day').textContent='Próximo dia disponível: '+label(days[0])+'. Envios de segunda a sábado, das 9h às 18h, exceto feriados.';};
+    const update=()=>{const active=form.querySelector('[name="shipping"]:checked')?.value==='motoboy';panel.hidden=!active;date.disabled=!active;time.disabled=!active;if(active){refreshDates();date.setCustomValidity('');time.setCustomValidity(calendar.validate(date.value,time.value));}};
+    date.addEventListener('change',()=>{time.min='09:00';time.setCustomValidity(calendar.validate(date.value,time.value));});time.addEventListener('input',()=>time.setCustomValidity(calendar.validate(date.value,time.value)));
+    form.addEventListener('change',event=>{if(event.target.name==='shipping')update();});update();
   }
   async function setupCorreios(){
     const old=form.querySelector('.shipping-coming-soon');if(!old)return;

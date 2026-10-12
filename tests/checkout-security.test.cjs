@@ -135,6 +135,9 @@ test('motoboy tariffs can be changed only by an admin and affect server quotes',
  db.exec("UPDATE customers SET role='admin' WHERE id=1");const session=await createSession(env,1,'admin');const put=value=>new Request('https://elegance18k.com/api/admin/shipping/motoboy',{method:'PUT',headers:{Origin:'https://elegance18k.com','Content-Type':'application/json',Cookie:'elegance_session='+session.token},body:JSON.stringify({rates:value})});
  assert.equal((await onRequest({env,request:put({...rates,canoas:-100})})).status,400);assert.equal((await onRequest({env,request:put(rates)})).status,200);assert.equal(await motoboyPrice(env,'Canoas'),2700);assert.equal(await motoboyPrice(env,'Sapucaia'),3000);assert.equal(await motoboyPrice(env,'Garopaba'),undefined);db.close();
 });
+test('motoboy calendar skips Sundays and Sapucaia holidays and enforces business hours',()=>{
+ const calendar=require('../motoboy-calendar.js');const now=new Date('2026-10-11T18:00:00Z');assert.equal(calendar.availableDays(now)[0],'2026-10-13');assert.equal(calendar.validDay('2026-10-17'),true);assert.equal(calendar.validDay('2026-10-18'),false);assert.equal(calendar.validDay('2026-12-08'),false);assert.equal(calendar.validDay('2026-06-04'),false);assert.equal(calendar.validDay('2026-04-03'),false);assert.equal(calendar.validDay('2026-08-20'),true);assert.equal(calendar.validate('2026-10-13','09:00',now),'');assert.equal(calendar.validate('2026-10-13','18:00',now),'');assert.ok(calendar.validate('2026-10-13','18:01',now));assert.ok(calendar.validate('2026-10-13','08:59',now));assert.equal(calendar.availableDays(new Date('2026-10-17T21:00:00Z'))[0],'2026-10-19');
+});
 test('cart reservations roll back all lines and aggregate repeated variants',async()=>{
  const {db,env}=fixture();order(db,1);
  await assert.rejects(()=>env.DB.batch(reservationStatements(env,1,[{variant_id:1,stock:1},{variant_id:1,stock:1}])),/OUT_OF_STOCK/);
