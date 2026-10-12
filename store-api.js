@@ -18,8 +18,10 @@
     panel.hidden=!enabled;if(textField)textField.hidden=!textEnabled;if(imageField)imageField.hidden=!imageEnabled;
     const textPrice=textField?.querySelector('strong'),imagePrice=imageField?.querySelector('strong');
     let namesField=panel.querySelector('.name-count-personalization');
+    const childrenModel=product.slug==='gargantilha-nuvem-filhos-veneziana';
     if(nameCountEnabled&&!namesField){namesField=document.createElement('div');namesField.className='name-count-personalization';namesField.innerHTML=`<p>Escolha a quantidade de nomes: <b data-name-count-label>1 Nome</b></p><div class="name-count-options" role="group" aria-label="Escolha a quantidade de nomes">${[1,2,3,4,5,6].map((count,index)=>`<button type="button" class="name-count-option${index?'':' active'}" data-name-count="${count}" aria-pressed="${index?'false':'true'}">${count} ${count===1?'Nome':'Nomes'}</button>`).join('')}</div>`;panel.querySelector('.personalization-fields')?.prepend(namesField);}
     if(namesField)namesField.hidden=!nameCountEnabled;
+    if(namesField&&childrenModel){namesField.querySelectorAll('[data-name-count]').forEach(button=>{const count=Number(button.dataset.nameCount);if(count>3)button.remove();else button.textContent=count+' '+(count===1?'filho':'filhos');});namesField.querySelector('p').innerHTML='Escolha a quantidade de filhos: <b data-name-count-label>1 filho</b>';namesField.querySelector('.name-count-options')?.setAttribute('aria-label','Escolha de 1 a 3 filhos');namesField.querySelectorAll('[data-name-count]').forEach(button=>button.dataset.countUnit='filho');}
     if(textField){const title=textField.querySelector('span');if(title)title.childNodes[0].textContent=nameCountEnabled?'Preencha os nomes para gravação em ordem *':birthDetails?'Nome, peso, altura, data e hora do nascimento *':textRequired?'Digite o nome que deseja gravar *':'Digite aqui o que deseja gravar ';}
     if(textPrice)textPrice.textContent=Number(product.engraving_text_price_cents||0)>0?'+ '+money(product.engraving_text_price_cents):'Incluso no valor';
     if(imagePrice)imagePrice.textContent='+ '+money(product.engraving_image_price_cents||0);

@@ -172,7 +172,7 @@ document.addEventListener("click", (event) => {
     item.setAttribute("aria-pressed", String(active));
   });
   const label = option.closest(".name-count-personalization")?.querySelector("[data-name-count-label]");
-  if (label) label.textContent = `${selectedNameCount} ${selectedNameCount === 1 ? "Nome" : "Nomes"}`;
+  if (label) label.textContent = `${selectedNameCount} ${option.dataset.countUnit==='filho'?(selectedNameCount===1?'filho':'filhos'):(selectedNameCount === 1 ? "Nome" : "Nomes")}`;
 });
 function updateLivePersonalization() {
   if (!livePersonalization || !liveEngravingText || !liveEngravingImage) return;

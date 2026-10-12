@@ -101,7 +101,7 @@ async function resolveItems(env: Env, items: CheckoutItem[], owner: string): Pro
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20 || !item.product_id || !item.variant_id) {
       throw new Error("INVALID_CART");
     }
-    const row = await env.DB.prepare(`SELECT p.id AS product_id, v.id AS variant_id, p.name, v.sku,
+    const row = await env.DB.prepare(`SELECT p.id AS product_id, v.id AS variant_id, p.name, p.slug AS product_slug, v.sku,
       COALESCE(v.price_cents,p.price_cents) AS unit_price_cents, v.stock, c.slug AS category_slug, p.personalizable, p.piece_length, p.available_sizes,
       p.engraving_text_enabled, p.engraving_text_required, p.engraving_name_count_enabled, p.engraving_text_price_cents, p.engraving_image_enabled, p.engraving_image_price_cents
       FROM products p JOIN product_variants v ON v.product_id=p.id LEFT JOIN categories c ON c.id=p.category_id
@@ -119,7 +119,8 @@ async function resolveItems(env: Env, items: CheckoutItem[], owner: string): Pro
     if (row.engraving_text_required && !engravingText) throw new Error("REQUIRED_PERSONALIZATION_TEXT");
     if (row.engraving_name_count_enabled) {
       const names = engravingText.split(',').map(name => name.trim()).filter(Boolean);
-      if (!Number.isInteger(nameCount) || nameCount < 1 || nameCount > 6 || names.length !== nameCount) throw new Error("INVALID_PERSONALIZATION_NAMES");
+      const maxNames = (row as ProductRow & {product_slug:string}).product_slug === 'gargantilha-nuvem-filhos-veneziana' ? 3 : 6;
+      if (!Number.isInteger(nameCount) || nameCount < 1 || nameCount > maxNames || names.length !== nameCount) throw new Error("INVALID_PERSONALIZATION_NAMES");
     } else if (nameCount) throw new Error("INVALID_PERSONALIZATION_NAMES");
     if (imageUploadId && !row.engraving_image_enabled) throw new Error("INVALID_PERSONALIZATION_IMAGE");
     if (engravingText.length > 80) throw new Error("INVALID_PERSONALIZATION");

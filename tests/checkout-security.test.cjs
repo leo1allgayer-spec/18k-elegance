@@ -1,4 +1,11 @@
 const {test}=require('node:test');
+test('nuvem necklace rejects four children and accepts three matching names',async()=>{
+ const {db,env}=fixture(),original=global.fetch;
+ db.exec("UPDATE products SET slug='gargantilha-nuvem-filhos-veneziana',engraving_name_count_enabled=1,engraving_text_enabled=1,engraving_text_required=1 WHERE id=1");
+ const request=checkout();const body=await request.json();body.items[0].personalization={name_count:4,engraving_text:'Ana, Bia, Caio, Davi'};
+ global.fetch=async()=>Response.json({id:'pref1',sandbox_init_point:'https://example.test/pay'});
+ try{assert.notEqual((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,201);assert.equal(db.prepare('SELECT COUNT(*) n FROM orders').get().n,0);body.items[0].personalization={name_count:3,engraving_text:'Ana, Bia, Caio'};assert.equal((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,201);}finally{global.fetch=original;db.close()}
+});
 test('store alert is queued only after payment and delivered once to the authorized shop number',async()=>{
  const {db,env}=fixture(),original=global.fetch,{sendStoreNotification}=require('../functions/_lib/store-notifications.ts');
  Object.assign(env,{EVOLUTION_API_URL:'https://evolution.example.test',EVOLUTION_API_KEY:'test-only',EVOLUTION_INSTANCE:'test'});
