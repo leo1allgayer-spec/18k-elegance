@@ -21,6 +21,7 @@ function fixture(){
  }
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0030_product_available_sizes.sql'),'utf8'));
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0031_loyalty_rewards.sql'),'utf8'));
+ db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0032_loyalty_whatsapp_notifications.sql'),'utf8'));
  db.exec(`INSERT INTO customers(id,name,email,phone,password_hash,password_salt,account_claimed) VALUES(1,'Original','owner@example.test','51999990000','unchanged','unchanged',0);
  INSERT INTO loyalty_accounts(customer_id) VALUES(1);
  INSERT INTO products(id,name,slug,sku,price_cents) VALUES(1,'Piece','piece','piece',10000);
@@ -113,6 +114,19 @@ test('loyalty reward requires the matching account, releases on refusal and is c
 test('guest cannot claim a loyalty reward by entering its owner email',async()=>{
  const {db,env}=fixture(),original=global.fetch;db.exec('UPDATE loyalty_accounts SET purchase_count=10 WHERE customer_id=1');let amount;global.fetch=async(_url,options)=>{amount=JSON.parse(options.body).items[0].unit_price;return Response.json({id:'guest',sandbox_init_point:'https://example.test/pay'})};
  try{assert.equal((await createMercadoPagoCheckout(checkout(),env)).status,201);assert.equal(amount,90);assert.equal(db.prepare('SELECT COUNT(*) n FROM loyalty_reward_uses').get().n,0)}finally{global.fetch=original;db.close()}
+});
+test('approved order sends the loyalty image once despite concurrent duplicate notifications',async()=>{
+ const {db,env}=fixture(),original=global.fetch,{sendLoyaltyNotification}=require('../functions/_lib/loyalty-notifications.ts');
+ Object.assign(env,{EVOLUTION_API_URL:'https://evolution.example.test',EVOLUTION_API_KEY:'test-only',EVOLUTION_INSTANCE:'test'});order(db,1);await finalizeOrder(env,1);await finalizeOrder(env,1);let calls=0,body;
+ global.fetch=async(url,options)=>{calls++;assert.ok(url.includes('/message/sendMedia/'));body=JSON.parse(options.body);return Response.json({key:{id:'test-delivered'}})};
+ try{await Promise.all([sendLoyaltyNotification(env,1),sendLoyaltyNotification(env,1)]);await sendLoyaltyNotification(env,1);assert.equal(calls,1);assert.equal(body.number,'5551999990000');assert.ok(body.media.endsWith('loyalty-card-1.png'));assert.ok(body.caption.includes('1 de 10'));assert.equal(db.prepare('SELECT status FROM loyalty_notifications').get().status,'sent');}finally{global.fetch=original;db.close()}
+});
+test('uncertain WhatsApp result is not sent a second time and does not undo payment',async()=>{
+ const {db,env}=fixture(),original=global.fetch,{sendLoyaltyNotification}=require('../functions/_lib/loyalty-notifications.ts');Object.assign(env,{EVOLUTION_API_URL:'https://evolution.example.test',EVOLUTION_API_KEY:'test-only',EVOLUTION_INSTANCE:'test'});order(db,1);await finalizeOrder(env,1);let calls=0;global.fetch=async()=>{calls++;throw new Error('timeout')};
+ try{await sendLoyaltyNotification(env,1);await sendLoyaltyNotification(env,1);assert.equal(calls,1);assert.equal(db.prepare('SELECT status FROM loyalty_notifications').get().status,'uncertain');assert.equal(db.prepare('SELECT status FROM orders').get().status,'paid');}finally{global.fetch=original;db.close()}
+});
+test('unpaid orders never enqueue a loyalty message',async()=>{
+ const {db,env}=fixture(),{sendPendingLoyaltyNotifications}=require('../functions/_lib/loyalty-notifications.ts');order(db,1);await sendPendingLoyaltyNotifications(env);assert.equal(db.prepare('SELECT COUNT(*) n FROM loyalty_notifications').get().n,0);db.close();
 });
 test('cart reservations roll back all lines and aggregate repeated variants',async()=>{
  const {db,env}=fixture();order(db,1);

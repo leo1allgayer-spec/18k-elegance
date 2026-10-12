@@ -7,6 +7,7 @@ import { giftCardBalance, syncGiftPayment } from "./gift-cards";
 import { reservationStatements, releaseCheckout, finalizeOrder } from './checkout-stock';
 import { exportPaidOrderToBling } from './bling-orders';
 import { loyaltyOverview } from './loyalty';
+import { sendLoyaltyNotification } from './loyalty-notifications';
 
 type CheckoutItem = { product_id?: number; variant_id?: number; quantity?: number; personalization?: { engraving_text?: string; name_count?: number; image_upload_id?: string; image_name?: string; size?: string } };
 type CheckoutBody = {
@@ -409,6 +410,8 @@ export async function applyMercadoPagoPayment(env: Env, payment: MercadoPagoPaym
     }
   }
   if (mapped === "paid") {
+    try { await sendLoyaltyNotification(env,order.id); }
+    catch(error){console.error('Loyalty notification failed',order.id,String(error));}
     // Do not let a temporary ERP failure invalidate an approved payment. A later
     // payment notification can retry an export that was not marked as sent.
     try { await exportPaidOrderToBling(env, order.id); }

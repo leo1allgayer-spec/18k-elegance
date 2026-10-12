@@ -629,7 +629,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (!admin) return apiError("Acesso restrito à administração.", 403, "FORBIDDEN");
     if (method === "GET" && parts[1] === "dashboard") return adminDashboard(env);
     if (method === "GET" && parts[1] === "loyalty") {
-      const customers=await env.DB.prepare("SELECT c.id,c.name,c.email,c.birth_date,l.purchase_count,l.rewards_issued FROM loyalty_accounts l JOIN customers c ON c.id=l.customer_id ORDER BY l.purchase_count DESC,c.name LIMIT 500").all<{id:number;name:string;email:string;birth_date:string|null;purchase_count:number;rewards_issued:number}>();
+      const customers=await env.DB.prepare("SELECT c.id,c.name,c.email,c.birth_date,l.purchase_count,l.rewards_issued,(SELECT status FROM loyalty_notifications n WHERE n.customer_id=c.id ORDER BY n.created_at DESC,n.order_id DESC LIMIT 1) AS notification_status FROM loyalty_accounts l JOIN customers c ON c.id=l.customer_id ORDER BY l.purchase_count DESC,c.name LIMIT 500").all<{id:number;name:string;email:string;birth_date:string|null;purchase_count:number;rewards_issued:number;notification_status:string|null}>();
       const participants=await Promise.all(customers.results.map(async c=>({...c,...await loyaltyOverview(env,c.id)})));
       return json({ok:true,participants});
     }

@@ -31,7 +31,7 @@ export async function sendWhatsAppMessage(env: Env, to: string, text: string): P
   }
 }
 
-export async function sendWhatsAppImage(env: Env, to: string, imageUrl: string, caption: string): Promise<void> {
+export async function sendWhatsAppImage(env: Env, to: string, imageUrl: string, caption: string, fileName='cartao-presente-elegance-18k.png'): Promise<void> {
   if (!env.EVOLUTION_API_URL || !env.EVOLUTION_API_KEY || !env.EVOLUTION_INSTANCE) throw new Error("EVOLUTION_NOT_CONFIGURED");
   const baseUrl = env.EVOLUTION_API_URL.trim().replace(/\/+$/, "");
   const apiKey = env.EVOLUTION_API_KEY.trim();
@@ -45,7 +45,7 @@ export async function sendWhatsAppImage(env: Env, to: string, imageUrl: string, 
       mediatype: "image",
       mimetype: "image/png",
       media: imageUrl,
-      fileName: "cartao-presente-elegance-18k.png",
+      fileName,
       caption,
       delay: 800,
     }),
