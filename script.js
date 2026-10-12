@@ -42,6 +42,31 @@ if (mobileMenuButton && !mobileMenuPanel) {
   mobileMenuButton.closest("header")?.insertAdjacentElement("afterend", mobileMenuPanel);
 }
 mobileMenuButton?.setAttribute("aria-expanded", "false");
+// Navigation follows the published category list, not the old static demo links.
+const categoryMenus = [...document.querySelectorAll('.header nav, .store-header nav, .mobile-menu-panel')];
+categoryMenus.forEach(nav => nav.querySelectorAll('a[href*="categoria="]').forEach(link => { link.hidden = true; link.style.display = 'none'; }));
+fetch('/api/categories', {cache:'no-store'}).then(response => {
+  if (!response.ok) throw new Error('Categorias indisponíveis');
+  return response.json();
+}).then(data => {
+  categoryMenus.forEach(nav => {
+    const previous = [...nav.querySelectorAll('a[href*="categoria="]')];
+    const anchor = previous[0] || nav.firstChild;
+    const links = document.createDocumentFragment();
+    data.categories.forEach(category => {
+      const link = document.createElement('a');
+      link.href = 'catalogo.html?categoria=' + encodeURIComponent(category.slug);
+      link.textContent = category.name;
+      link.addEventListener('click', () => {
+        mobileMenuPanel?.setAttribute('hidden','');
+        mobileMenuButton?.setAttribute('aria-expanded','false');
+      });
+      links.append(link);
+    });
+    nav.insertBefore(links, anchor);
+    previous.forEach(link => link.remove());
+  });
+}).catch(error => console.warn('Não foi possível atualizar o menu de categorias.', error));
 mobileMenuButton?.addEventListener("click", () => {
   if (!mobileMenuPanel) return;
   const willOpen = mobileMenuPanel.hasAttribute("hidden");
