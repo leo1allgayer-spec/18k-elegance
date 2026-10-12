@@ -22,6 +22,7 @@ function fixture(){
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0030_product_available_sizes.sql'),'utf8'));
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0031_loyalty_rewards.sql'),'utf8'));
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0032_loyalty_whatsapp_notifications.sql'),'utf8'));
+ db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0033_motoboy_rates.sql'),'utf8'));
  db.exec(`INSERT INTO customers(id,name,email,phone,password_hash,password_salt,account_claimed) VALUES(1,'Original','owner@example.test','51999990000','unchanged','unchanged',0);
  INSERT INTO loyalty_accounts(customer_id) VALUES(1);
  INSERT INTO products(id,name,slug,sku,price_cents) VALUES(1,'Piece','piece','piece',10000);
@@ -127,6 +128,12 @@ test('uncertain WhatsApp result is not sent a second time and does not undo paym
 });
 test('unpaid orders never enqueue a loyalty message',async()=>{
  const {db,env}=fixture(),{sendPendingLoyaltyNotifications}=require('../functions/_lib/loyalty-notifications.ts');order(db,1);await sendPendingLoyaltyNotifications(env);assert.equal(db.prepare('SELECT COUNT(*) n FROM loyalty_notifications').get().n,0);db.close();
+});
+test('motoboy tariffs can be changed only by an admin and affect server quotes',async()=>{
+ const {db,env}=fixture(),{motoboyPrice}=require('../functions/_lib/motoboy.ts');const rates={canoas:2700,esteio:2500,'sapucaia do sul':3000};
+ assert.equal((await onRequest({env,request:new Request('https://elegance18k.com/api/admin/shipping/motoboy',{method:'PUT',headers:{Origin:'https://elegance18k.com','Content-Type':'application/json'},body:JSON.stringify({rates})})})).status,403);
+ db.exec("UPDATE customers SET role='admin' WHERE id=1");const session=await createSession(env,1,'admin');const put=value=>new Request('https://elegance18k.com/api/admin/shipping/motoboy',{method:'PUT',headers:{Origin:'https://elegance18k.com','Content-Type':'application/json',Cookie:'elegance_session='+session.token},body:JSON.stringify({rates:value})});
+ assert.equal((await onRequest({env,request:put({...rates,canoas:-100})})).status,400);assert.equal((await onRequest({env,request:put(rates)})).status,200);assert.equal(await motoboyPrice(env,'Canoas'),2700);assert.equal(await motoboyPrice(env,'Sapucaia'),3000);assert.equal(await motoboyPrice(env,'Garopaba'),undefined);db.close();
 });
 test('cart reservations roll back all lines and aggregate repeated variants',async()=>{
  const {db,env}=fixture();order(db,1);

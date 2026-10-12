@@ -8,6 +8,7 @@ import { reservationStatements, releaseCheckout, finalizeOrder } from './checkou
 import { exportPaidOrderToBling } from './bling-orders';
 import { loyaltyOverview } from './loyalty';
 import { sendLoyaltyNotification } from './loyalty-notifications';
+import { motoboyPrice } from './motoboy';
 
 type CheckoutItem = { product_id?: number; variant_id?: number; quantity?: number; personalization?: { engraving_text?: string; name_count?: number; image_upload_id?: string; image_name?: string; size?: string } };
 type CheckoutBody = {
@@ -223,9 +224,9 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
   let shippingCents = 0;
   if (shippingMethod === "motoboy") {
     const city = (body.shipping?.city || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-    const rates: Record<string, number> = { canoas: 2500, esteio: 2500, sapucaia: 3000, "sapucaia do sul": 3000 };
-    shippingCents = rates[city] || 0;
-    if (!shippingCents) return apiError("Para esta cidade, solicite a cotação do motoboy pelo WhatsApp ou selecione Correios.", 400, "MOTOBOY_QUOTE_REQUIRED");
+    const rate=await motoboyPrice(env,city);
+    if (rate===undefined) return apiError("Para esta cidade, solicite a cotação do motoboy pelo WhatsApp ou selecione Correios.", 400, "MOTOBOY_QUOTE_REQUIRED");
+    shippingCents=rate;
   } else if (shippingMethod === "correios") {
     try {
       const quotes = await calculateCorreiosQuotes(env, body.shipping?.postal_code || "", body.items || []);

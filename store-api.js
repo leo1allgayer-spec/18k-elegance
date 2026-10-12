@@ -31,6 +31,7 @@
   function enableProductShipping(product,variant){
     const box=document.querySelector('.shipping-box'),input=box?.querySelector('.shipping-form input'),button=box?.querySelector('.shipping-form button'),options=box?.querySelector('.motoboy-option'),note=box?.querySelector('.simulation-note');
     if(!box||!input||!button||!options||!variant)return;
+    fetch('/api/shipping/motoboy',{cache:'no-store'}).then(response=>response.ok?response.json():Promise.reject()).then(data=>{const label=options.querySelector('label small');if(label)label.textContent=['canoas','esteio','sapucaia do sul'].map(city=>({canoas:'Canoas',esteio:'Esteio','sapucaia do sul':'Sapucaia do Sul'}[city])+' '+money(data.rates[city])).join(' · ')+'. Outras cidades: consulte pelo WhatsApp.'}).catch(()=>{});
     button.addEventListener('click',async()=>{
       const postal=String(input.value||'').replace(/\D/g,'');
       if(postal.length!==8){note.textContent='Digite um CEP válido com 8 números.';return}

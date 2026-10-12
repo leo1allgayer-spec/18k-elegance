@@ -38,10 +38,12 @@
     const cityInput=form.elements.city_state,option=form.querySelector('.motoboy-checkout-option'),radio=option?.querySelector('input'),price=option?.querySelector('strong'),help=option?.querySelector('small'),link=form.querySelector('.motoboy-whatsapp');
     if(!cityInput||!option||!radio||!price||!link)return;
     const normalize=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
-    const update=()=>{const city=normalize(cityInput.value.split('-')[0]),rates={canoas:2500,esteio:2500,sapucaia:3000,'sapucaia do sul':3000},cents=rates[city];
-      if(cents){radio.disabled=false;price.textContent=(cents/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});help.textContent=`Valor fixo para ${cityInput.value.split('-')[0].trim()}`;link.hidden=true}
-      else{radio.disabled=true;price.textContent=city?'Sob consulta':'Informe a cidade';help.textContent='Canoas R$ 25 · Esteio R$ 25 · Sapucaia R$ 30';if(radio.checked)form.querySelector('input[name="shipping"][value="pickup"]')?.click();link.hidden=!city;link.href=`https://wa.me/555194927676?text=${encodeURIComponent(`Olá! Gostaria de cotar a entrega por motoboy para ${cityInput.value.trim()}.`)}`}
+    let rates=null;
+    const update=()=>{const city=normalize(cityInput.value.split('-')[0]),cents=rates?.[city==='sapucaia'?'sapucaia do sul':city];
+      if(cents!==undefined){radio.disabled=false;price.textContent=(cents/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});help.textContent=`Valor fixo para ${cityInput.value.split('-')[0].trim()}`;link.hidden=true}
+      else{radio.disabled=true;price.textContent=rates?(city?'Sob consulta':'Informe a cidade'):'Consultando tarifas';help.textContent=rates?'Entregas para Canoas, Esteio e Sapucaia do Sul. Outras cidades: consulte.':'Aguarde a consulta das tarifas.';if(radio.checked)form.querySelector('input[name="shipping"][value="pickup"]')?.click();link.hidden=!city;link.href=`https://wa.me/555194927676?text=${encodeURIComponent(`Olá! Gostaria de cotar a entrega por motoboy para ${cityInput.value.trim()}.`)}`}
     };cityInput.addEventListener('input',update);cityInput.addEventListener('change',update);update();
+    fetch('/api/shipping/motoboy',{cache:'no-store'}).then(async response=>{if(!response.ok)throw new Error();return response.json()}).then(data=>{rates=data.rates;update()}).catch(()=>{price.textContent='Indisponível';help.textContent='Não foi possível consultar o motoboy. Atualize a página ou entre em contato.'});
   }
   function setupDeliveryPreference(){
     const panel=form.querySelector('.motoboy-preference');if(!panel)return;

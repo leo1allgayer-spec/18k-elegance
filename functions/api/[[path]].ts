@@ -1,5 +1,6 @@
 import { adminMfa, verifyAdminFactor, mfaEnabled } from "../_lib/admin-mfa";
 import { loyaltyOverview } from '../_lib/loyalty';
+import { motoboyRates,saveMotoboyRates } from '../_lib/motoboy';
 import type { Env } from "../_lib/types";
 import { apiError, json, normalizeEmail, readJson } from "../_lib/http";
 import { clearSessionCookie, createSession, currentCustomer, deleteCurrentSession, hashPassword, sessionCookie, sha256, verifyPassword, upgradePassword } from "../_lib/auth";
@@ -622,12 +623,14 @@ async function route(request: Request, env: Env): Promise<Response> {
     return customer ? json({ ok: true, customer }) : apiError("Faça login para continuar.", 401, "UNAUTHENTICATED");
   }
   if (method === "GET" && parts.join("/") === "account") return accountOverview(request, env);
+  if (method === "GET" && parts.join("/") === "shipping/motoboy") return json({ok:true,rates:await motoboyRates(env)},200,{'Cache-Control':'no-store'});
   if (method === "PUT" && parts.join("/") === "account") return updateAccount(request, env);
   if (method === "PUT" && parts.join("/") === "account/address") return saveAccountAddress(request, env);
   if (parts[0] === "admin") {
     const admin = await requireAdmin(request, env);
     if (!admin) return apiError("Acesso restrito à administração.", 403, "FORBIDDEN");
     if (method === "GET" && parts[1] === "dashboard") return adminDashboard(env);
+    if (method === 'PUT' && parts.join('/')==='admin/shipping/motoboy')return saveMotoboyRates(request,env);
     if (method === "GET" && parts[1] === "loyalty") {
       const customers=await env.DB.prepare("SELECT c.id,c.name,c.email,c.birth_date,l.purchase_count,l.rewards_issued,(SELECT status FROM loyalty_notifications n WHERE n.customer_id=c.id ORDER BY n.created_at DESC,n.order_id DESC LIMIT 1) AS notification_status FROM loyalty_accounts l JOIN customers c ON c.id=l.customer_id ORDER BY l.purchase_count DESC,c.name LIMIT 500").all<{id:number;name:string;email:string;birth_date:string|null;purchase_count:number;rewards_issued:number;notification_status:string|null}>();
       const participants=await Promise.all(customers.results.map(async c=>({...c,...await loyaltyOverview(env,c.id)})));
