@@ -1,4 +1,12 @@
 const {test}=require('node:test');
+test('store alert is queued only after payment and delivered once to the authorized shop number',async()=>{
+ const {db,env}=fixture(),original=global.fetch,{sendStoreNotification}=require('../functions/_lib/store-notifications.ts');
+ Object.assign(env,{EVOLUTION_API_URL:'https://evolution.example.test',EVOLUTION_API_KEY:'test-only',EVOLUTION_INSTANCE:'test'});
+ order(db,1);assert.equal(db.prepare('SELECT COUNT(*) n FROM store_notifications').get().n,0);
+ await finalizeOrder(env,1);await finalizeOrder(env,1);let calls=0,body;
+ global.fetch=async(_url,options)=>{calls++;body=JSON.parse(options.body);return new Response('{}',{status:200})};
+ try{await Promise.all([sendStoreNotification(env,1),sendStoreNotification(env,1)]);await sendStoreNotification(env,1);assert.equal(calls,1);assert.equal(body.number,'5551994927676');assert.ok(body.text.includes('ELG-1'));assert.ok(body.text.includes('Retirada em loja'));assert.equal(db.prepare('SELECT status FROM store_notifications').get().status,'sent');}finally{global.fetch=original;db.close()}
+});
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const {DatabaseSync}=require('node:sqlite');
@@ -23,6 +31,7 @@ function fixture(){
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0031_loyalty_rewards.sql'),'utf8'));
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0032_loyalty_whatsapp_notifications.sql'),'utf8'));
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0033_motoboy_rates.sql'),'utf8'));
+ db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0034_store_notifications.sql'),'utf8'));
  db.exec(`INSERT INTO customers(id,name,email,phone,password_hash,password_salt,account_claimed) VALUES(1,'Original','owner@example.test','51999990000','unchanged','unchanged',0);
  INSERT INTO loyalty_accounts(customer_id) VALUES(1);
  INSERT INTO products(id,name,slug,sku,price_cents) VALUES(1,'Piece','piece','piece',10000);

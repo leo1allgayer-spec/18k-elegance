@@ -2,6 +2,7 @@ import type { Env } from "../../_lib/types";
 import { apiError, json } from "../../_lib/http";
 import { sendScheduledGiftCards } from "../../_lib/gift-cards";
 import { sendPendingLoyaltyNotifications } from '../../_lib/loyalty-notifications';
+import { sendPendingStoreNotifications } from '../../_lib/store-notifications';
 import { verifyStockTick } from "../../_lib/stock-signature";
 
 export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
@@ -11,5 +12,6 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
   const control = await env.DB.prepare("SELECT secret FROM bling_stock_control WHERE id=1").first<{ secret: string }>();
   if (!control || !await verifyStockTick(control.secret, timestamp, signature)) return apiError("Acesso restrito.", 403);
   await sendPendingLoyaltyNotifications(env);
+  await sendPendingStoreNotifications(env);
   return json({ ok: true, ...await sendScheduledGiftCards(env) });
 };

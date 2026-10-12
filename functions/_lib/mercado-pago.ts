@@ -8,6 +8,7 @@ import { reservationStatements, releaseCheckout, finalizeOrder } from './checkou
 import { exportPaidOrderToBling } from './bling-orders';
 import { loyaltyOverview } from './loyalty';
 import { sendLoyaltyNotification } from './loyalty-notifications';
+import { sendStoreNotification } from './store-notifications';
 import { motoboyPrice } from './motoboy';
 import { validate as validateMotoboyDate } from '../../motoboy-calendar';
 
@@ -414,6 +415,8 @@ export async function applyMercadoPagoPayment(env: Env, payment: MercadoPagoPaym
     }
   }
   if (mapped === "paid") {
+    try { await sendStoreNotification(env,order.id); }
+    catch(error){console.error('Store notification failed',order.id,String(error));}
     try { await sendLoyaltyNotification(env,order.id); }
     catch(error){console.error('Loyalty notification failed',order.id,String(error));}
     // Do not let a temporary ERP failure invalidate an approved payment. A later
