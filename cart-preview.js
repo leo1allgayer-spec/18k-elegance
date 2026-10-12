@@ -8,7 +8,7 @@
   const safe = value => String(value || '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   function render() {
     const cart = getCart();
-    list.innerHTML = cart.length ? cart.map((item,index)=>`<article><img src="${safe(item.image)}" alt="${safe(item.name)}"><div><h3>${safe(item.name)}</h3>${item.personalization?.size?`<p>Tamanho: ${safe(item.personalization.size)}</p>`:''}${item.personalization?.engraving_text?`<p>Gravação: ${safe(item.personalization.engraving_text)}</p>`:''}<p>Quantidade: ${Number(item.qty)}</p><strong>${money(Number(item.price)*Number(item.qty))}</strong><button type="button" data-remove-preview="${index}" aria-label="Remover ${safe(item.name)}">Remover</button></div></article>`).join('') : '<p>Sua sacola está vazia.</p>';
+    list.innerHTML = cart.length ? cart.map((item,index)=>`<article><img src="${safe(item.image)}" alt="${safe(item.name)}"><div><h3>${safe(item.name)}</h3>${item.personalization?.children_model?`<p>Modelo: ${safe(item.personalization.children_model)}</p>`:""}${item.personalization?.size?`<p>Tamanho: ${safe(item.personalization.size)}</p>`:''}${item.personalization?.engraving_text?`<p>Gravação: ${safe(item.personalization.engraving_text)}</p>`:''}<p>Quantidade: ${Number(item.qty)}</p><strong>${money(Number(item.price)*Number(item.qty))}</strong><button type="button" data-remove-preview="${index}" aria-label="Remover ${safe(item.name)}">Remover</button></div></article>`).join('') : '<p>Sua sacola está vazia.</p>';
     dialog.querySelector('.cart-preview-total').textContent = money(cart.reduce((sum,item)=>sum+Number(item.price)*Number(item.qty),0));
     dialog.querySelector('a.button').hidden = !cart.length;
   }

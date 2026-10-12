@@ -14,8 +14,17 @@
     const panel=document.querySelector('.photo-personalization'),add=document.querySelector('.add-cart'),gallery=document.querySelector('.main-product-image');
     const textEnabled=Boolean(product.engraving_text_enabled),textRequired=Boolean(product.engraving_text_required),nameCountEnabled=Boolean(product.engraving_name_count_enabled),birthDetails=/dados.de.nascimento/i.test(product.name||''),imageEnabled=Boolean(product.engraving_image_enabled),enabled=textEnabled||imageEnabled||nameCountEnabled;
     if(!panel||!add)return;
+    if(product.slug==='gargantilha-coracao-vazado-veneziana'){
+      panel.hidden=false;
+      const models=['1 Menina','1 Menino','2 Meninas','2 Meninos','1 Menina e 1 Menino','3 Meninas','3 Meninos','2 Meninas e 1 Menino','2 Meninos e 1 Menina','4 Meninas','4 Meninos','2 Meninas e 2 Meninos','3 Meninas e 1 Menino','3 Meninos e 1 Menina'];
+      const field=document.createElement('label');field.className='children-model-field';field.innerHTML='<span>Escolha o modelo (até 4 filhos) *</span><select required id="children-model"><option value="">Selecione meninas e meninos</option>'+models.map(model=>'<option>'+model+'</option>').join('')+'</select>';
+      panel.querySelector('.personalization-fields')?.prepend(field);
+      field.querySelector('select').addEventListener('change',event=>add.dataset.childrenModel=event.target.value);
+      field.querySelector('select').style.cssText='display:block;width:100%;min-height:48px;margin-top:12px;padding:12px;background:#050b16;color:#fcfaf4;border:1px solid #b99850;font:inherit;color-scheme:dark';
+      add.dataset.childrenModelRequired='true';
+    }
     const textField=panel.querySelector('#engraving-text')?.closest('label'),imageField=panel.querySelector('#engraving-image')?.closest('label');
-    panel.hidden=!enabled;if(textField)textField.hidden=!textEnabled;if(imageField)imageField.hidden=!imageEnabled;
+    panel.hidden=!enabled&&product.slug!=='gargantilha-coracao-vazado-veneziana';if(textField)textField.hidden=!textEnabled;if(imageField)imageField.hidden=!imageEnabled;
     const textPrice=textField?.querySelector('strong'),imagePrice=imageField?.querySelector('strong');
     let namesField=panel.querySelector('.name-count-personalization');
     const childrenModel=product.slug==='gargantilha-nuvem-filhos-veneziana';

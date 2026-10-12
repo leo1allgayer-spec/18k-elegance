@@ -239,7 +239,10 @@ document.querySelector(".add-cart")?.addEventListener("click", (event) => {
     personalizationMessage.textContent = "Aguarde a conclusão do envio da imagem."; return;
   }
   const selectedSize = button.dataset.size || "";
-  const personalization = engravingText || personalizationUpload || selectedSize ? {
+  const childrenModel=button.dataset.childrenModel||'';
+  if(button.dataset.childrenModelRequired==='true'&&!childrenModel){personalizationMessage.textContent='Selecione o modelo de meninas e meninos.';document.querySelector('#children-model')?.focus();return;}
+  const personalization = engravingText || personalizationUpload || selectedSize || childrenModel ? {
+    children_model: childrenModel || undefined,
     engraving_text: engravingText || undefined, name_count: nameCountEnabled ? selectedNameCount : undefined, image_upload_id: personalizationUpload?.id || undefined, image_name: personalizationUpload?.name || undefined, size: selectedSize || undefined,
   } : null;
   const cart = getCart();
@@ -275,7 +278,7 @@ function renderCart() {
   if (!container) return;
   const cart = getCart();
   const safe = value => String(value || "").replace(/[&<>\"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-  container.innerHTML = cart.map((item, index) => `<article class="cart-item"><img src="${safe(item.image)}" alt="${safe(item.name)}"><div><h3>${safe(item.name)}</h3><p>Quantidade: ${Number(item.qty) || 1}</p>${item.personalization?.size?`<p class="cart-personalization"><b>Tamanho:</b> ${safe(item.personalization.size)}</p>`:""}${item.personalization?.engraving_text?`<p class="cart-personalization"><b>Gravação:</b> ${safe(item.personalization.engraving_text)}</p>`:""}${item.personalization?.image_name?`<p class="cart-personalization"><b>Foto:</b> ${safe(item.personalization.image_name)}</p>`:""}<button data-remove="${index}">Remover</button></div><strong>${money((Number(item.price) || 0) * (Number(item.qty) || 1))}</strong></article>`).join("");
+  container.innerHTML = cart.map((item, index) => `<article class="cart-item"><img src="${safe(item.image)}" alt="${safe(item.name)}"><div><h3>${safe(item.name)}</h3><p>Quantidade: ${Number(item.qty) || 1}</p>${item.personalization?.children_model?`<p>Modelo: ${safe(item.personalization.children_model)}</p>`:""}${item.personalization?.size?`<p class="cart-personalization"><b>Tamanho:</b> ${safe(item.personalization.size)}</p>`:""}${item.personalization?.engraving_text?`<p class="cart-personalization"><b>Gravação:</b> ${safe(item.personalization.engraving_text)}</p>`:""}${item.personalization?.image_name?`<p class="cart-personalization"><b>Foto:</b> ${safe(item.personalization.image_name)}</p>`:""}<button data-remove="${index}">Remover</button></div><strong>${money((Number(item.price) || 0) * (Number(item.qty) || 1))}</strong></article>`).join("");
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const subtotalCents = Math.round(subtotal * 100);
   const savedCoupon = JSON.parse(localStorage.getItem("elegance-coupon") || "null");

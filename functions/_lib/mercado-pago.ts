@@ -109,6 +109,11 @@ async function resolveItems(env: Env, items: CheckoutItem[], owner: string): Pro
     if (!row || row.stock < quantity) throw new Error("OUT_OF_STOCK");
     const engravingText = item.personalization?.engraving_text?.trim() || "";
     const nameCount = Number(item.personalization?.name_count || 0);
+    const childrenModel=String((item.personalization as {children_model?:string}|undefined)?.children_model||'');
+    const childrenModels=['1 Menina','1 Menino','2 Meninas','2 Meninos','1 Menina e 1 Menino','3 Meninas','3 Meninos','2 Meninas e 1 Menino','2 Meninos e 1 Menina','4 Meninas','4 Meninos','2 Meninas e 2 Meninos','3 Meninas e 1 Menino','3 Meninos e 1 Menina'];
+    if((row as ProductRow & {product_slug:string}).product_slug==='gargantilha-coracao-vazado-veneziana'){
+      if(!childrenModels.includes(childrenModel))throw new Error('INVALID_PERSONALIZATION_NAMES');
+    }else if(childrenModel)throw new Error('INVALID_PERSONALIZATION_NAMES');
     const imageUploadId = item.personalization?.image_upload_id?.trim() || "";
     const size = item.personalization?.size?.trim() || "";
     const requiresSize = row.category_slug === "linha-masculina";
@@ -130,7 +135,7 @@ async function resolveItems(env: Env, items: CheckoutItem[], owner: string): Pro
       if (!upload) throw new Error("INVALID_PERSONALIZATION_IMAGE");
     }
     const fee = (engravingText ? row.engraving_text_price_cents : 0) + (imageUploadId ? row.engraving_image_price_cents : 0);
-    const personalization = engravingText || imageUploadId || size ? { engraving_text: engravingText || null, name_count: nameCount || null, image_upload_id: imageUploadId || null, image_name: item.personalization?.image_name?.slice(0, 160) || null, size: size || null } : null;
+    const personalization = engravingText || imageUploadId || size || childrenModel ? { children_model:childrenModel||null,engraving_text: engravingText || null, name_count: nameCount || null, image_upload_id: imageUploadId || null, image_name: item.personalization?.image_name?.slice(0, 160) || null, size: size || null } : null;
     resolved.push({ ...row, unit_price_cents: row.unit_price_cents + fee, stock: quantity, personalization_json: personalization ? JSON.stringify(personalization) : null, personalization_fee_cents: fee, image_upload_id: imageUploadId || null });
   }
   if (!resolved.length) throw new Error("EMPTY_CART");

@@ -1,4 +1,9 @@
 const {test}=require('node:test');
+test('heart necklace requires a valid children model and preserves it in the order',async()=>{
+ const {db,env}=fixture(),original=global.fetch;db.exec("UPDATE products SET slug='gargantilha-coracao-vazado-veneziana' WHERE id=1");
+ const body=await checkout().json();global.fetch=async()=>Response.json({id:'pref1',sandbox_init_point:'https://example.test/pay'});
+ try{for(const model of ['', '5 Meninas']){body.items[0].personalization={children_model:model};assert.notEqual((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,201);}body.items[0].personalization={children_model:'3 Meninos e 1 Menina'};assert.equal((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,201);assert.equal(JSON.parse(db.prepare('SELECT personalization_json FROM order_items').get().personalization_json).children_model,'3 Meninos e 1 Menina');}finally{global.fetch=original;db.close()}
+});
 test('nuvem necklace rejects four children and accepts three matching names',async()=>{
  const {db,env}=fixture(),original=global.fetch;
  db.exec("UPDATE products SET slug='gargantilha-nuvem-filhos-veneziana',engraving_name_count_enabled=1,engraving_text_enabled=1,engraving_text_required=1 WHERE id=1");
