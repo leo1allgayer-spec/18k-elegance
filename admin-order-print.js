@@ -8,6 +8,7 @@ function printDocument(details){const order=details.order,items=details.items||[
 
 const printButton=document.querySelector('#print-orders'),status=document.querySelector('#print-status'),content=document.querySelector('#print-content');
 const printFormat=document.querySelector('#print-format');
+printFormat.value='thermal';
 function setPrintFormat(){
  const thermal=printFormat.value==='thermal';
  document.body.classList.toggle('thermal-print',thermal);
