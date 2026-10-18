@@ -14,6 +14,12 @@
     const panel=document.querySelector('.photo-personalization'),add=document.querySelector('.add-cart'),gallery=document.querySelector('.main-product-image');
     const textEnabled=Boolean(product.engraving_text_enabled),textRequired=Boolean(product.engraving_text_required),nameCountEnabled=Boolean(product.engraving_name_count_enabled),birthDetails=/dados.de.nascimento/i.test(product.name||''),imageEnabled=Boolean(product.engraving_image_enabled),enabled=textEnabled||imageEnabled||nameCountEnabled;
     if(!panel||!add)return;
+    if(product.slug==='lip-lance'&&!document.querySelector('#product-color')){
+      const field=document.createElement('label');field.className='product-color-field';field.style.cssText='display:block;margin:20px 0';
+      field.innerHTML='<span>Escolha a cor *</span><select id="product-color" required style="display:block;width:100%;min-height:48px;margin-top:10px;padding:12px;background:#050b16;color:#fcfaf4;border:1px solid #b99850;font:inherit;color-scheme:dark"><option value="">Selecione uma cor</option>'+['Azul Marinho','Rosa Pink','Branco','Preto'].map(color=>'<option>'+color+'</option>').join('')+'</select>';
+      add.before(field);add.dataset.colorRequired='true';
+      field.querySelector('select').addEventListener('change',event=>add.dataset.color=event.target.value);
+    }
     if(product.slug==='gargantilha-coracao-vazado-veneziana'){
       panel.hidden=false;
       const models=['1 Menina','1 Menino','2 Meninas','2 Meninos','1 Menina e 1 Menino','3 Meninas','3 Meninos','2 Meninas e 1 Menino','2 Meninos e 1 Menina','4 Meninas','4 Meninos','2 Meninas e 2 Meninos','3 Meninas e 1 Menino','3 Meninos e 1 Menina'];
