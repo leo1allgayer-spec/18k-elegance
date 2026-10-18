@@ -11,7 +11,7 @@ async function provider<T>(env:Env,path:string,body?:unknown):Promise<T>{
  return response.json<T>();
 }
 type Sale={id:string;gift_card_id:number;customer_id:number;amount_cents:number;status:string;checkout_url:string|null};
-type ScheduledCard={id:number;code:string;recipient_name:string;recipient_phone:string;message:string|null;initial_cents:number};
+type ScheduledCard={id:number;code:string;recipient_name:string;recipient_phone:string;message:string|null;initial_cents:number;sender_name?:string|null};
 
 function brazilToday(): string {
  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts();
@@ -27,13 +27,13 @@ function scheduledAt(date: string, time: string): string | null {
 
 function deliveryMessage(card: ScheduledCard): string {
  const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(card.initial_cents / 100);
- return ["Você recebeu um Cartão Presente Elegance 18K!", `Para: ${card.recipient_name}`, `Valor: ${money}`, card.message || "", `Código: ${card.code}`, "Use no pagamento da sua compra: https://elegance18k.com/"].filter(Boolean).join("\n");
+ return ["Você recebeu um Cartão Presente Elegance 18K!", `Para: ${card.recipient_name}`,card.sender_name?`De: ${card.sender_name}`:'', `Valor: ${money}`, card.message || "", `Código: ${card.code}`, "Use no pagamento da sua compra: https://elegance18k.com/"].filter(Boolean).join("\n");
 }
 
 
 export async function sendScheduledGiftCards(env: Env): Promise<{ sent: number; failed: number }> {
  if (!whatsappConfigured(env)) return { sent: 0, failed: 0 };
- const due = await env.DB.prepare(`SELECT id,code,recipient_name,recipient_phone,message,initial_cents FROM gift_cards
+ const due = await env.DB.prepare(`SELECT id,code,recipient_name,recipient_phone,message,initial_cents,sender_name FROM gift_cards
    WHERE status='active' AND delivery_status='scheduled' AND datetime(delivery_scheduled_for)<=CURRENT_TIMESTAMP
    ORDER BY delivery_scheduled_for ASC LIMIT 25`).all<ScheduledCard>();
  let sent = 0, failed = 0;
@@ -118,12 +118,14 @@ export async function giftCardsRequest(request:Request,env:Env):Promise<Response
  }
  if(request.method!=="POST")return apiError("Método não permitido.",405);
  if(request.headers.get("origin")!==new URL(request.url).origin)return apiError("Origem inválida.",403);
- const body=await readJson<{action?:string;code?:string;amount_cents?:number;recipient_name?:string;recipient_phone?:string;message?:string;delivery_date?:string;delivery_time?:string;request_key?:string}>(request);
+ const body=await readJson<{action?:string;code?:string;amount_cents?:number;recipient_name?:string;recipient_phone?:string;sender_name?:string;message?:string;delivery_date?:string;delivery_time?:string;request_key?:string}>(request);
  if(body.action==="balance"){
   const card=await giftCardBalance(env,String(body.code||"").trim().toUpperCase());
   return card?json({balance_cents:card.balance_cents}):apiError("Cartão inválido ou ainda não liberado.",400);
  }
  const amount=body.amount_cents,name=String(body.recipient_name||"").trim(),phone=String(body.recipient_phone||"").replace(/\D/g,""),message=String(body.message||"").trim(),key=String(body.request_key||""),delivery=scheduledAt(String(body.delivery_date||""),String(body.delivery_time||""));
+ const sender=String(body.sender_name||'').trim();
+ if(sender.length>100)return apiError('O nome de quem presenteia deve ter até 100 caracteres.');
  if(!Number.isInteger(amount)||amount!<100||amount!>200000||name.length<2||name.length>100||phone.length<10||phone.length>13||message.length>1000||!delivery||!/^[-a-zA-Z0-9]{16,80}$/.test(key))return apiError("Confira o valor, nome, WhatsApp, mensagem e data de envio.");
  const existing=await env.DB.prepare("SELECT * FROM gift_card_sales WHERE customer_id=? AND request_key=?").bind(customer.id,key).first<Sale>();
  if(existing?.checkout_url)return json({checkout_url:existing.checkout_url});
@@ -132,7 +134,7 @@ export async function giftCardsRequest(request:Request,env:Env):Promise<Response
  if(!existing){
   const codeHash=await sha256(code);
   await env.DB.prepare("INSERT INTO gift_card_sales(id,customer_id,amount_cents,request_key) VALUES(?,?,?,?)").bind(id,customer.id,amount!,key).run();
-  await env.DB.prepare("INSERT INTO gift_cards(code_hash,code,purchaser_customer_id,recipient_name,recipient_phone,message,initial_cents,balance_cents,delivery_scheduled_for,delivery_status) VALUES(?,?,?,?,?,?,?,?,?, 'scheduled')").bind(codeHash,code,customer.id,name,phone,message,amount!,amount!,delivery).run();
+  await env.DB.prepare("INSERT INTO gift_cards(code_hash,code,purchaser_customer_id,recipient_name,recipient_phone,message,initial_cents,balance_cents,delivery_scheduled_for,sender_name,delivery_status) VALUES(?,?,?,?,?,?,?,?,?,?, 'scheduled')").bind(codeHash,code,customer.id,name,phone,message,amount!,amount!,delivery,sender||null).run();
   await env.DB.prepare("UPDATE gift_card_sales SET gift_card_id=(SELECT id FROM gift_cards WHERE code_hash=?) WHERE id=?").bind(codeHash,id).run();
  }
  const origin=new URL(request.url).origin;

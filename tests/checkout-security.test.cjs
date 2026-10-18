@@ -3,8 +3,8 @@ test('gift image contains personalized text and WhatsApp receives rendered PNG b
  require.extensions['.wasm']=(module,file)=>module.exports=new WebAssembly.Module(fs.readFileSync(file));
  require.extensions['.bin']=(module,file)=>{const b=fs.readFileSync(file);module.exports=b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength)};
  const {giftCardSvg,renderGiftCard}=require('../functions/_lib/gift-card-image.ts'),{sendWhatsAppPng}=require('../functions/_lib/whatsapp.ts');
- const background=fs.readFileSync(require('node:path').join(__dirname,'../assets/gift-card-whatsapp.png')),card={recipient_name:'Brenda & Família',initial_cents:5000,message:'Parabéns pelo seu dia! <3'};
- const svg=giftCardSvg(card,background);assert.ok(svg.includes('Brenda &amp; Família'));assert.ok(svg.includes('50,00'));assert.ok(svg.includes('&lt;3'));assert.ok(!svg.includes('ELG-'));
+ const background=fs.readFileSync(require('node:path').join(__dirname,'../assets/gift-card-whatsapp.png')),card={recipient_name:'Brenda & Família',sender_name:'Marina',initial_cents:5000,message:'Parabéns pelo seu dia! <3'};
+ const svg=giftCardSvg(card,background);assert.ok(svg.includes('Brenda &amp; Família'));assert.ok(svg.includes('De: Marina'));assert.ok(!giftCardSvg({...card,sender_name:null},background).includes('De:'));assert.ok(svg.includes('50,00'));assert.ok(svg.includes('&lt;3'));assert.ok(!svg.includes('ELG-'));
  const png=await renderGiftCard(card,background);assert.equal(Buffer.from(png).readUInt32BE(16),1200);assert.equal(Buffer.from(png).readUInt32BE(20),900);assert.notDeepEqual(Buffer.from(png),background);
  const original=global.fetch;let body;global.fetch=async(_url,options)=>{body=JSON.parse(options.body);return Response.json({ok:true})};try{await sendWhatsAppPng({EVOLUTION_API_URL:'https://example.test',EVOLUTION_API_KEY:'test',EVOLUTION_INSTANCE:'test'},'5551999990000',png,'Legenda completa');assert.deepEqual(Buffer.from(body.media,'base64'),Buffer.from(png));assert.equal(body.caption,'Legenda completa');}finally{global.fetch=original}
 });
@@ -74,6 +74,7 @@ function fixture(){
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0033_motoboy_rates.sql'),'utf8'));
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0034_store_notifications.sql'),'utf8'));
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0036_product_choice_options.sql'),'utf8'));
+ db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0037_gift_card_sender.sql'),'utf8'));
  db.exec(`INSERT INTO customers(id,name,email,phone,password_hash,password_salt,account_claimed) VALUES(1,'Original','owner@example.test','51999990000','unchanged','unchanged',0);
  INSERT INTO loyalty_accounts(customer_id) VALUES(1);
  INSERT INTO products(id,name,slug,sku,price_cents) VALUES(1,'Piece','piece','piece',10000);
