@@ -321,7 +321,11 @@ async function saveShippingOrigin(request: Request, env: Env): Promise<Response>
 
 async function adminOrderDetail(env: Env, id: number): Promise<Response> {
   const order = await env.DB.prepare(`SELECT o.id, o.order_number, o.status, o.subtotal_cents, o.discount_cents,
-    o.shipping_cents, o.total_cents, o.shipping_method, o.shipping_address_json, o.tracking_code, o.created_at,
+    o.shipping_cents, o.total_cents,o.gift_card_cents,
+    (SELECT status FROM payments WHERE order_id=o.id ORDER BY id DESC LIMIT 1) AS payment_status,
+    (SELECT amount_cents FROM payments WHERE order_id=o.id ORDER BY id DESC LIMIT 1) AS payment_amount_cents,
+    (SELECT status FROM gift_card_uses WHERE order_id=o.id) AS gift_card_status,
+    o.shipping_method, o.shipping_address_json, o.tracking_code, o.created_at,
     c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone
     FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.id = ?`).bind(id).first();
   if (!order) return apiError("Pedido não encontrado.", 404, "NOT_FOUND");

@@ -1,4 +1,10 @@
 const {test}=require('node:test');
+test('receipt separates gift-card payment from the approved Mercado Pago payment',()=>{
+ const vm=require('node:vm'),context={Intl,Date};vm.createContext(context);vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../admin-order-print.js'),'utf8').split('const printButton=')[0],context);
+ const html=vm.runInContext(`printDocument({order:{order_number:'TESTE',status:'paid',total_cents:35654,gift_card_cents:5000,gift_card_status:'spent',payment_status:'approved',payment_amount_cents:30654},items:[]})`,context);
+ assert.ok(html.includes('Total do pedido'));assert.ok(html.includes('Pago com cartão-presente'));assert.ok(html.includes('Pago no Mercado Pago'));for(const amount of ['356,54','306,54','50,00'])assert.ok(html.includes(amount));
+ assert.equal(vm.runInContext('paymentBreakdown({total_cents:10000,gift_card_cents:0})',context),'');assert.ok(!vm.runInContext("paymentBreakdown({total_cents:10000,gift_card_cents:5000,payment_status:'pending'})",context).includes('Pago no Mercado Pago'));
+});
 test('configured finishes are required and persisted with the order',async()=>{
  const {db,env}=fixture(),original=global.fetch;db.prepare('UPDATE products SET available_finishes=? WHERE id=1').run(JSON.stringify(['Dourado 18K','Prata 925']));const body=await checkout().json();
  global.fetch=async()=>Response.json({id:'pref',sandbox_init_point:'https://example.test/pay'});
