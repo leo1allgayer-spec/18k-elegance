@@ -23,6 +23,7 @@ type RecoveryCartItem = {
 };
 type CartRecoveryBody = { phone?: string; cart?: RecoveryCartItem[] };
 type ProductBody = {
+  available_colors?: string[]; children_models?: string[]; name_count_max?: number;
   name?: string; category_id?: number | null; sku?: string; description?: string;
   price_cents?: number; pix_price_cents?: number | null; stock?: number;
   image_url?: string; active?: boolean; featured?: boolean; personalizable?: boolean; finish?: string;
@@ -118,7 +119,7 @@ async function adminProducts(env: Env): Promise<Response> {
   const result = await env.DB.prepare(`SELECT p.id, p.name, p.category_id, p.sku, p.description, p.price_cents, p.pix_price_cents,
     p.weight_grams, p.width_cm, p.height_cm, p.length_cm, p.piece_length, p.material, p.coating, p.warranty_months,
     p.engraving_text_enabled, p.engraving_text_required, p.engraving_name_count_enabled, p.engraving_text_price_cents, p.engraving_image_enabled, p.engraving_image_price_cents,
-    p.active, p.featured, p.personalizable, c.name AS category_name,
+    p.active, p.featured, p.personalizable, p.available_sizes,p.available_colors,p.children_models,p.name_count_max,c.name AS category_name,
     (SELECT finish FROM product_variants WHERE product_id=p.id ORDER BY id LIMIT 1) AS finish,
     (SELECT url FROM product_images WHERE product_id = p.id ORDER BY sort_order, id LIMIT 1) AS image_url,
     COALESCE(SUM(v.stock), 0) AS stock
@@ -165,6 +166,8 @@ async function saveProduct(request: Request, env: Env, id?: number): Promise<Res
   const sku = body.sku?.trim().toUpperCase() || await uniqueSku(env, name);
   const price = integer(body.price_cents, -1);
   const stock = integer(body.stock, 0);
+  for(const field of ['available_colors','children_models'] as const){const options=body[field];if(options!==undefined&&(!Array.isArray(options)||options.length>30||options.some(v=>typeof v!=='string'||!v.trim()||v.trim().length>80)))return apiError('Revise as cores e combinações disponíveis.');}
+  if(body.name_count_max!==undefined&&(!Number.isInteger(body.name_count_max)||body.name_count_max<1||body.name_count_max>6))return apiError('O limite de nomes deve ser de 1 a 6.');
   if (body.available_sizes !== undefined && (!Array.isArray(body.available_sizes) || body.available_sizes.length > 20 || body.available_sizes.some(size => typeof size !== 'string' || !size.trim() || size.trim().length > 20))) return apiError("Revise os tamanhos disponíveis.");
   if (name.length < 2) return apiError("Informe o nome do produto.");
 
@@ -181,7 +184,7 @@ async function saveProduct(request: Request, env: Env, id?: number): Promise<Res
   const values = [body.category_id ? integer(body.category_id) : null, name, slug, sku, body.description?.trim() || null,
     price, body.pix_price_cents == null ? null : integer(body.pix_price_cents), integer(body.weight_grams), Number(body.width_cm) || 0,
     Number(body.height_cm) || 0, Number(body.length_cm) || 0, body.piece_length?.trim() || null, body.material?.trim() || null,
-    body.coating?.trim() || null, Math.max(0, integer(body.warranty_months, 12)), flag(body.engraving_text_enabled, false), flag(body.engraving_text_required, false), flag(body.engraving_name_count_enabled, false),
+    body.coating?.trim() || null, Math.max(0, integer(body.warranty_months, 12)), flag(body.engraving_text_enabled||body.engraving_name_count_enabled, false), flag(body.engraving_text_required||body.engraving_name_count_enabled, false), flag(body.engraving_name_count_enabled, false),
     Math.max(0, integer(body.engraving_text_price_cents, 2990)), flag(body.engraving_image_enabled, false),
     Math.max(0, integer(body.engraving_image_price_cents, 4990)), flag(body.featured, false),
     flag(Boolean(body.personalizable || body.engraving_text_enabled || body.engraving_name_count_enabled || body.engraving_image_enabled), false), flag(body.active)];
@@ -201,6 +204,8 @@ async function saveProduct(request: Request, env: Env, id?: number): Promise<Res
     productId = Number(result.meta.last_row_id);
   }
   if (body.available_sizes !== undefined) await env.DB.prepare("UPDATE products SET available_sizes=? WHERE id=?").bind(JSON.stringify([...new Set(body.available_sizes.map(size=>size.trim()))]),productId).run();
+  for(const field of ['available_colors','children_models'] as const){if(body[field]!==undefined)await env.DB.prepare(`UPDATE products SET ${field}=? WHERE id=?`).bind(JSON.stringify([...new Set(body[field]!.map(v=>v.trim()))]),productId).run();}
+  if(body.name_count_max!==undefined)await env.DB.prepare('UPDATE products SET name_count_max=? WHERE id=?').bind(body.name_count_max,productId).run();
   const variant = await env.DB.prepare("SELECT id FROM product_variants WHERE product_id = ? ORDER BY id LIMIT 1").bind(productId).first<{id:number}>();
   if (variant) await env.DB.prepare("UPDATE product_variants SET name=?, sku=?, finish=?, price_cents=?, stock=?, active=?, updated_at=CURRENT_TIMESTAMP WHERE id=?")
     .bind("Padrão", `${sku}-PADRAO`, body.finish?.trim() || "Dourado 18K", price, stock, flag(body.active), variant.id).run();

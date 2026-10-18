@@ -102,7 +102,7 @@ async function resolveItems(env: Env, items: CheckoutItem[], owner: string): Pro
       throw new Error("INVALID_CART");
     }
     const row = await env.DB.prepare(`SELECT p.id AS product_id, v.id AS variant_id, p.name, p.slug AS product_slug, v.sku,
-      COALESCE(v.price_cents,p.price_cents) AS unit_price_cents, v.stock, c.slug AS category_slug, p.personalizable, p.piece_length, p.available_sizes,
+      COALESCE(v.price_cents,p.price_cents) AS unit_price_cents, v.stock, c.slug AS category_slug, p.personalizable, p.piece_length, p.available_sizes,p.available_colors,p.children_models,p.name_count_max,
       p.engraving_text_enabled, p.engraving_text_required, p.engraving_name_count_enabled, p.engraving_text_price_cents, p.engraving_image_enabled, p.engraving_image_price_cents
       FROM products p JOIN product_variants v ON v.product_id=p.id LEFT JOIN categories c ON c.id=p.category_id
       WHERE p.id=? AND v.id=? AND p.active=1 AND v.active=1`).bind(item.product_id, item.variant_id).first<ProductRow>();
@@ -110,12 +110,14 @@ async function resolveItems(env: Env, items: CheckoutItem[], owner: string): Pro
     const engravingText = item.personalization?.engraving_text?.trim() || "";
     const nameCount = Number(item.personalization?.name_count || 0);
     const color=String((item.personalization as {color?:string}|undefined)?.color||'');
-    if((row as ProductRow & {product_slug:string}).product_slug==='lip-lance'){
-      if(!['Azul Marinho','Rosa Pink','Branco','Preto'].includes(color))throw new Error('INVALID_PERSONALIZATION');
+    const options=row as ProductRow & {available_colors:string;children_models:string;name_count_max:number};
+    const colors:string[]=JSON.parse(options.available_colors||'[]');
+    if(colors.length){
+      if(!colors.includes(color))throw new Error('INVALID_PERSONALIZATION');
     }else if(color)throw new Error('INVALID_PERSONALIZATION');
     const childrenModel=String((item.personalization as {children_model?:string}|undefined)?.children_model||'');
-    const childrenModels=['1 Menina','1 Menino','2 Meninas','2 Meninos','1 Menina e 1 Menino','3 Meninas','3 Meninos','2 Meninas e 1 Menino','2 Meninos e 1 Menina','4 Meninas','4 Meninos','2 Meninas e 2 Meninos','3 Meninas e 1 Menino','3 Meninos e 1 Menina'];
-    if((row as ProductRow & {product_slug:string}).product_slug==='gargantilha-coracao-vazado-veneziana'){
+    const childrenModels:string[]=JSON.parse(options.children_models||'[]');
+    if(childrenModels.length){
       if(!childrenModels.includes(childrenModel))throw new Error('INVALID_PERSONALIZATION_NAMES');
     }else if(childrenModel)throw new Error('INVALID_PERSONALIZATION_NAMES');
     const imageUploadId = item.personalization?.image_upload_id?.trim() || "";
@@ -128,7 +130,7 @@ async function resolveItems(env: Env, items: CheckoutItem[], owner: string): Pro
     if (row.engraving_text_required && !engravingText) throw new Error("REQUIRED_PERSONALIZATION_TEXT");
     if (row.engraving_name_count_enabled) {
       const names = engravingText.split(',').map(name => name.trim()).filter(Boolean);
-      const maxNames = (row as ProductRow & {product_slug:string}).product_slug === 'gargantilha-nuvem-filhos-veneziana' ? 3 : 6;
+      const maxNames = options.name_count_max||6;
       if (!Number.isInteger(nameCount) || nameCount < 1 || nameCount > maxNames || names.length !== nameCount) throw new Error("INVALID_PERSONALIZATION_NAMES");
     } else if (nameCount) throw new Error("INVALID_PERSONALIZATION_NAMES");
     if (imageUploadId && !row.engraving_image_enabled) throw new Error("INVALID_PERSONALIZATION_IMAGE");

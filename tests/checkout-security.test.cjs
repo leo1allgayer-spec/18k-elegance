@@ -1,6 +1,15 @@
 const {test}=require('node:test');
+test('admin configures choices on arbitrary products and checkout enforces them after renaming',async()=>{
+ const {db,env}=fixture(),original=global.fetch;db.exec("UPDATE customers SET role='admin' WHERE id=1");const session=await createSession(env,1,'admin');
+ const body={name:'Modelo Novo',sku:'MODEL-NOVO',price_cents:10000,stock:1,active:true,available_colors:['Lilás','Verde'],children_models:['1 Menina','2 Meninos'],name_count_max:2};
+ const save=()=>onRequest({env,request:new Request('https://elegance18k.com/api/admin/products/1',{method:'PUT',headers:{Origin:'https://elegance18k.com','Content-Type':'application/json',Cookie:'elegance_session='+session.token},body:JSON.stringify(body)})});
+ try{assert.equal((await save()).status,200);body.name='Renomeado';assert.equal((await save()).status,200);const p=db.prepare('SELECT * FROM products WHERE id=1').get();assert.deepEqual(JSON.parse(p.available_colors),['Lilás','Verde']);assert.equal(p.name_count_max,2);
+ const payload=await checkout().json();payload.items[0].personalization={color:'Lilás',children_model:'2 Meninos'};global.fetch=async()=>Response.json({id:'pref',sandbox_init_point:'https://example.test/pay'});assert.equal((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',payload),env)).status,201);
+ body.name_count_max=7;assert.equal((await save()).status,400);
+ }finally{global.fetch=original;db.close()}
+});
 test('Lip Lance requires one of four colors and persists the selected color',async()=>{
- const {db,env}=fixture(),original=global.fetch;db.exec("UPDATE products SET slug='lip-lance' WHERE id=1");const body=await checkout().json();
+ const {db,env}=fixture(),original=global.fetch;db.exec(`UPDATE products SET slug='lip-lance',available_colors='["Azul Marinho","Rosa Pink","Branco","Preto"]' WHERE id=1`);const body=await checkout().json();
  global.fetch=async()=>Response.json({id:'pref-color',sandbox_init_point:'https://example.test/pay'});
  try{for(const color of ['', 'Vermelho']){body.items[0].personalization={color};assert.notEqual((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,201);}assert.equal(db.prepare('SELECT COUNT(*) n FROM orders').get().n,0);body.items[0].personalization={color:'Rosa Pink'};assert.equal((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,201);assert.equal(JSON.parse(db.prepare('SELECT personalization_json FROM order_items').get().personalization_json).color,'Rosa Pink');}finally{global.fetch=original;db.close()}
 });
@@ -11,13 +20,13 @@ test('Bling recovery preserves discount, freight and size and does not duplicate
  try{await exportPaidOrderToBling(env,1);assert.equal(payload.contato.id,88);assert.equal(payload.desconto.valor,36.83);assert.equal(payload.transporte.frete,30);assert.ok(payload.itens[0].descricao.includes('60 cm'));assert.equal(db.prepare('SELECT status FROM bling_order_exports').get().status,'sent');await exportPaidOrderToBling(env,1);assert.equal(posts,1);db.exec("UPDATE bling_order_exports SET status='error',bling_order_id=NULL");global.fetch=async()=>Response.json({data:[{id:999,numeroLoja:'ELG-1'}]});await exportPaidOrderToBling(env,1);assert.equal(db.prepare('SELECT bling_order_id FROM bling_order_exports').get().bling_order_id,999);}finally{global.fetch=original;db.close()}
 });
 test('heart necklace requires a valid children model and preserves it in the order',async()=>{
- const {db,env}=fixture(),original=global.fetch;db.exec("UPDATE products SET slug='gargantilha-coracao-vazado-veneziana' WHERE id=1");
+ const {db,env}=fixture(),original=global.fetch;db.exec(`UPDATE products SET slug='gargantilha-coracao-vazado-veneziana',children_models='["3 Meninos e 1 Menina"]' WHERE id=1`);
  const body=await checkout().json();global.fetch=async()=>Response.json({id:'pref1',sandbox_init_point:'https://example.test/pay'});
  try{for(const model of ['', '5 Meninas']){body.items[0].personalization={children_model:model};assert.notEqual((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,201);}body.items[0].personalization={children_model:'3 Meninos e 1 Menina'};assert.equal((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,201);assert.equal(JSON.parse(db.prepare('SELECT personalization_json FROM order_items').get().personalization_json).children_model,'3 Meninos e 1 Menina');}finally{global.fetch=original;db.close()}
 });
 test('nuvem necklace rejects four children and accepts three matching names',async()=>{
  const {db,env}=fixture(),original=global.fetch;
- db.exec("UPDATE products SET slug='gargantilha-nuvem-filhos-veneziana',engraving_name_count_enabled=1,engraving_text_enabled=1,engraving_text_required=1 WHERE id=1");
+ db.exec("UPDATE products SET slug='gargantilha-nuvem-filhos-veneziana',name_count_max=3,engraving_name_count_enabled=1,engraving_text_enabled=1,engraving_text_required=1 WHERE id=1");
  const request=checkout();const body=await request.json();body.items[0].personalization={name_count:4,engraving_text:'Ana, Bia, Caio, Davi'};
  global.fetch=async()=>Response.json({id:'pref1',sandbox_init_point:'https://example.test/pay'});
  try{assert.notEqual((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,201);assert.equal(db.prepare('SELECT COUNT(*) n FROM orders').get().n,0);body.items[0].personalization={name_count:3,engraving_text:'Ana, Bia, Caio'};assert.equal((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,201);}finally{global.fetch=original;db.close()}
@@ -55,6 +64,7 @@ function fixture(){
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0032_loyalty_whatsapp_notifications.sql'),'utf8'));
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0033_motoboy_rates.sql'),'utf8'));
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0034_store_notifications.sql'),'utf8'));
+ db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0036_product_choice_options.sql'),'utf8'));
  db.exec(`INSERT INTO customers(id,name,email,phone,password_hash,password_salt,account_claimed) VALUES(1,'Original','owner@example.test','51999990000','unchanged','unchanged',0);
  INSERT INTO loyalty_accounts(customer_id) VALUES(1);
  INSERT INTO products(id,name,slug,sku,price_cents) VALUES(1,'Piece','piece','piece',10000);

@@ -14,29 +14,29 @@
     const panel=document.querySelector('.photo-personalization'),add=document.querySelector('.add-cart'),gallery=document.querySelector('.main-product-image');
     const textEnabled=Boolean(product.engraving_text_enabled),textRequired=Boolean(product.engraving_text_required),nameCountEnabled=Boolean(product.engraving_name_count_enabled),birthDetails=/dados.de.nascimento/i.test(product.name||''),imageEnabled=Boolean(product.engraving_image_enabled),enabled=textEnabled||imageEnabled||nameCountEnabled;
     if(!panel||!add)return;
-    if(product.slug==='lip-lance'&&!document.querySelector('#product-color')){
+    const colors=JSON.parse(product.available_colors||'[]'),models=JSON.parse(product.children_models||'[]'),maxNames=Number(product.name_count_max)||6;
+    if(colors.length&&!document.querySelector('#product-color')){
       const field=document.createElement('label');field.className='product-color-field';field.style.cssText='display:block;margin:20px 0';
-      field.innerHTML='<span>Escolha a cor *</span><select id="product-color" required style="display:block;width:100%;min-height:48px;margin-top:10px;padding:12px;background:#050b16;color:#fcfaf4;border:1px solid #b99850;font:inherit;color-scheme:dark"><option value="">Selecione uma cor</option>'+['Azul Marinho','Rosa Pink','Branco','Preto'].map(color=>'<option>'+color+'</option>').join('')+'</select>';
+      field.innerHTML='<span>Escolha a cor *</span><select id="product-color" required style="display:block;width:100%;min-height:48px;margin-top:10px;padding:12px;background:#050b16;color:#fcfaf4;border:1px solid #b99850;font:inherit;color-scheme:dark"><option value="">Selecione uma cor</option>'+colors.map(color=>'<option>'+esc(color)+'</option>').join('')+'</select>';
       add.before(field);add.dataset.colorRequired='true';
       field.querySelector('select').addEventListener('change',event=>add.dataset.color=event.target.value);
     }
-    if(product.slug==='gargantilha-coracao-vazado-veneziana'){
+    if(models.length){
       panel.hidden=false;
-      const models=['1 Menina','1 Menino','2 Meninas','2 Meninos','1 Menina e 1 Menino','3 Meninas','3 Meninos','2 Meninas e 1 Menino','2 Meninos e 1 Menina','4 Meninas','4 Meninos','2 Meninas e 2 Meninos','3 Meninas e 1 Menino','3 Meninos e 1 Menina'];
-      const field=document.createElement('label');field.className='children-model-field';field.innerHTML='<span>Escolha o modelo (até 4 filhos) *</span><select required id="children-model"><option value="">Selecione meninas e meninos</option>'+models.map(model=>'<option>'+model+'</option>').join('')+'</select>';
+      const field=document.createElement('label');field.className='children-model-field';field.innerHTML='<span>Escolha o modelo *</span><select required id="children-model"><option value="">Selecione meninas e meninos</option>'+models.map(model=>'<option>'+esc(model)+'</option>').join('')+'</select>';
       panel.querySelector('.personalization-fields')?.prepend(field);
       field.querySelector('select').addEventListener('change',event=>add.dataset.childrenModel=event.target.value);
       field.querySelector('select').style.cssText='display:block;width:100%;min-height:48px;margin-top:12px;padding:12px;background:#050b16;color:#fcfaf4;border:1px solid #b99850;font:inherit;color-scheme:dark';
       add.dataset.childrenModelRequired='true';
     }
     const textField=panel.querySelector('#engraving-text')?.closest('label'),imageField=panel.querySelector('#engraving-image')?.closest('label');
-    panel.hidden=!enabled&&product.slug!=='gargantilha-coracao-vazado-veneziana';if(textField)textField.hidden=!textEnabled;if(imageField)imageField.hidden=!imageEnabled;
+    panel.hidden=!enabled&&!models.length;if(textField)textField.hidden=!(textEnabled||nameCountEnabled);if(imageField)imageField.hidden=!imageEnabled;
     const textPrice=textField?.querySelector('strong'),imagePrice=imageField?.querySelector('strong');
     let namesField=panel.querySelector('.name-count-personalization');
     const childrenModel=product.slug==='gargantilha-nuvem-filhos-veneziana';
-    if(nameCountEnabled&&!namesField){namesField=document.createElement('div');namesField.className='name-count-personalization';namesField.innerHTML=`<p>Escolha a quantidade de nomes: <b data-name-count-label>1 Nome</b></p><div class="name-count-options" role="group" aria-label="Escolha a quantidade de nomes">${[1,2,3,4,5,6].map((count,index)=>`<button type="button" class="name-count-option${index?'':' active'}" data-name-count="${count}" aria-pressed="${index?'false':'true'}">${count} ${count===1?'Nome':'Nomes'}</button>`).join('')}</div>`;panel.querySelector('.personalization-fields')?.prepend(namesField);}
+    if(nameCountEnabled&&!namesField){namesField=document.createElement('div');namesField.className='name-count-personalization';namesField.innerHTML=`<p>Escolha a quantidade de nomes: <b data-name-count-label>1 Nome</b></p><div class="name-count-options" role="group" aria-label="Escolha a quantidade de nomes">${Array.from({length:maxNames},(_,i)=>i+1).map((count,index)=>`<button type="button" class="name-count-option${index?'':' active'}" data-name-count="${count}" aria-pressed="${index?'false':'true'}">${count} ${count===1?'Nome':'Nomes'}</button>`).join('')}</div>`;panel.querySelector('.personalization-fields')?.prepend(namesField);}
     if(namesField)namesField.hidden=!nameCountEnabled;
-    if(namesField&&childrenModel){namesField.querySelectorAll('[data-name-count]').forEach(button=>{const count=Number(button.dataset.nameCount);if(count>3)button.remove();else button.textContent=count+' '+(count===1?'filho':'filhos');});namesField.querySelector('p').innerHTML='Escolha a quantidade de filhos: <b data-name-count-label>1 filho</b>';namesField.querySelector('.name-count-options')?.setAttribute('aria-label','Escolha de 1 a 3 filhos');namesField.querySelectorAll('[data-name-count]').forEach(button=>button.dataset.countUnit='filho');}
+    if(namesField&&childrenModel){namesField.querySelectorAll('[data-name-count]').forEach(button=>{const count=Number(button.dataset.nameCount);button.textContent=count+' '+(count===1?'filho':'filhos');});namesField.querySelector('p').innerHTML='Escolha a quantidade de filhos: <b data-name-count-label>1 filho</b>';namesField.querySelector('.name-count-options')?.setAttribute('aria-label','Escolha a quantidade de filhos');namesField.querySelectorAll('[data-name-count]').forEach(button=>button.dataset.countUnit='filho');}
     if(textField){const title=textField.querySelector('span');if(title)title.childNodes[0].textContent=nameCountEnabled?'Preencha os nomes para gravação em ordem *':birthDetails?'Nome, peso, altura, data e hora do nascimento *':textRequired?'Digite o nome que deseja gravar *':'Digite aqui o que deseja gravar ';}
     if(textPrice)textPrice.textContent=Number(product.engraving_text_price_cents||0)>0?'+ '+money(product.engraving_text_price_cents):'Incluso no valor';
     if(imagePrice)imagePrice.textContent='+ '+money(product.engraving_image_price_cents||0);
