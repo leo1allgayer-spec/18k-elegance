@@ -121,8 +121,17 @@
       window.loadProductReviews?.(product);
       enablePhotoPersonalization(product);
       const finishName=product.finish||variant?.finish||'Dourado 18K';
+      const offeredFinishes=JSON.parse(product.available_finishes||'[]');
       const finish=document.querySelector('.finish-choice span');if(finish)finish.textContent=finishName;
       const swatch=document.querySelector('.finish-choice .color-swatch');if(swatch){const silver=/prata|silver|925/i.test(finishName);swatch.style.background=silver?'linear-gradient(135deg,#f5f5f5,#a6a6a6 55%,#dedede)':'';swatch.setAttribute('aria-label',finishName);swatch.title=finishName;}
+      if(offeredFinishes.length){
+        const box=document.querySelector('.finish-choice');
+        const select=document.createElement('select');select.id='product-finish';select.required=true;select.setAttribute('aria-label','Escolha o acabamento');select.style.cssText='max-width:100%;padding:10px;background:#050b16;color:#fcfaf4;border:1px solid #b99850;color-scheme:dark;font:inherit';
+        if(offeredFinishes.length>1)select.add(new Option('Selecione o acabamento',''));
+        offeredFinishes.forEach(value=>select.add(new Option(value,value)));
+        box.replaceChildren(select);add.dataset.finishRequired='true';add.dataset.selectedFinish=select.value;
+        select.addEventListener('change',()=>add.dataset.selectedFinish=select.value);
+      }
       const wish=document.querySelector('.wish-button');if(wish){wish.dataset.favorite=product.slug;const active=getFavorites().includes(product.slug);wish.classList.toggle('active',active);wish.textContent=active?'♥︎ Remover dos favoritos':'♡ Adicionar aos favoritos';wish.setAttribute('aria-pressed',String(active));bindFavorites(document.querySelector('.purchase-card'))}
       enableSizeSelection(product);
       enableProductShipping(product,variant);

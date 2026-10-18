@@ -1,4 +1,9 @@
 const {test}=require('node:test');
+test('configured finishes are required and persisted with the order',async()=>{
+ const {db,env}=fixture(),original=global.fetch;db.prepare('UPDATE products SET available_finishes=? WHERE id=1').run(JSON.stringify(['Dourado 18K','Prata 925']));const body=await checkout().json();
+ global.fetch=async()=>Response.json({id:'pref',sandbox_init_point:'https://example.test/pay'});
+ try{for(const finish of ['', 'Ródio']){body.items[0].personalization={finish};assert.notEqual((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,201);}body.items[0].personalization={finish:'Prata 925'};assert.equal((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,201);assert.equal(JSON.parse(db.prepare('SELECT personalization_json FROM order_items').get().personalization_json).finish,'Prata 925');}finally{global.fetch=original;db.close()}
+});
 test('gift image contains personalized text and WhatsApp receives rendered PNG bytes',async()=>{
  require.extensions['.wasm']=(module,file)=>module.exports=new WebAssembly.Module(fs.readFileSync(file));
  require.extensions['.bin']=(module,file)=>{const b=fs.readFileSync(file);module.exports=b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength)};
@@ -75,6 +80,7 @@ function fixture(){
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0034_store_notifications.sql'),'utf8'));
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0036_product_choice_options.sql'),'utf8'));
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0037_gift_card_sender.sql'),'utf8'));
+ db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0038_product_finishes.sql'),'utf8'));
  db.exec(`INSERT INTO customers(id,name,email,phone,password_hash,password_salt,account_claimed) VALUES(1,'Original','owner@example.test','51999990000','unchanged','unchanged',0);
  INSERT INTO loyalty_accounts(customer_id) VALUES(1);
  INSERT INTO products(id,name,slug,sku,price_cents) VALUES(1,'Piece','piece','piece',10000);

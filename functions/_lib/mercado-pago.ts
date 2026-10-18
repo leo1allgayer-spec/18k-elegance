@@ -102,13 +102,16 @@ async function resolveItems(env: Env, items: CheckoutItem[], owner: string): Pro
       throw new Error("INVALID_CART");
     }
     const row = await env.DB.prepare(`SELECT p.id AS product_id, v.id AS variant_id, p.name, p.slug AS product_slug, v.sku,
-      COALESCE(v.price_cents,p.price_cents) AS unit_price_cents, v.stock, c.slug AS category_slug, p.personalizable, p.piece_length, p.available_sizes,p.available_colors,p.children_models,p.name_count_max,
+      COALESCE(v.price_cents,p.price_cents) AS unit_price_cents, v.stock, c.slug AS category_slug, p.personalizable, p.piece_length, p.available_sizes,p.available_colors,p.available_finishes,p.children_models,p.name_count_max,
       p.engraving_text_enabled, p.engraving_text_required, p.engraving_name_count_enabled, p.engraving_text_price_cents, p.engraving_image_enabled, p.engraving_image_price_cents
       FROM products p JOIN product_variants v ON v.product_id=p.id LEFT JOIN categories c ON c.id=p.category_id
       WHERE p.id=? AND v.id=? AND p.active=1 AND v.active=1`).bind(item.product_id, item.variant_id).first<ProductRow>();
     if (!row || row.stock < quantity) throw new Error("OUT_OF_STOCK");
     const engravingText = item.personalization?.engraving_text?.trim() || "";
     const nameCount = Number(item.personalization?.name_count || 0);
+    const finish=String((item.personalization as {finish?:string}|undefined)?.finish||'');
+    const finishes:string[]=JSON.parse((row as ProductRow & {available_finishes:string}).available_finishes||'[]');
+    if(finishes.length?!finishes.includes(finish):Boolean(finish))throw new Error('INVALID_PERSONALIZATION');
     const color=String((item.personalization as {color?:string}|undefined)?.color||'');
     const options=row as ProductRow & {available_colors:string;children_models:string;name_count_max:number};
     const colors:string[]=JSON.parse(options.available_colors||'[]');
@@ -141,7 +144,7 @@ async function resolveItems(env: Env, items: CheckoutItem[], owner: string): Pro
       if (!upload) throw new Error("INVALID_PERSONALIZATION_IMAGE");
     }
     const fee = (engravingText ? row.engraving_text_price_cents : 0) + (imageUploadId ? row.engraving_image_price_cents : 0);
-    const personalization = engravingText || imageUploadId || size || childrenModel || color ? { color:color||null,children_model:childrenModel||null,engraving_text: engravingText || null, name_count: nameCount || null, image_upload_id: imageUploadId || null, image_name: item.personalization?.image_name?.slice(0, 160) || null, size: size || null } : null;
+    const personalization = engravingText || imageUploadId || size || childrenModel || color || finish ? { finish:finish||null,color:color||null,children_model:childrenModel||null,engraving_text: engravingText || null, name_count: nameCount || null, image_upload_id: imageUploadId || null, image_name: item.personalization?.image_name?.slice(0, 160) || null, size: size || null } : null;
     resolved.push({ ...row, unit_price_cents: row.unit_price_cents + fee, stock: quantity, personalization_json: personalization ? JSON.stringify(personalization) : null, personalization_fee_cents: fee, image_upload_id: imageUploadId || null });
   }
   if (!resolved.length) throw new Error("EMPTY_CART");
