@@ -32,11 +32,20 @@ export async function sendWhatsAppMessage(env: Env, to: string, text: string): P
 }
 
 export async function sendWhatsAppImage(env: Env, to: string, imageUrl: string, caption: string, fileName='cartao-presente-elegance-18k.png'): Promise<void> {
+  if(!/^https:\/\//i.test(imageUrl))throw new Error('EVOLUTION_URL_INVALID');
+  return sendImageMedia(env,to,imageUrl,caption,fileName);
+}
+export async function sendWhatsAppPng(env:Env,to:string,png:Uint8Array,caption:string):Promise<void>{
+  if(png[0]!==137||png[1]!==80||png[2]!==78||png[3]!==71)throw new Error('INVALID_PNG');
+  let data='';for(let i=0;i<png.length;i+=8192)data+=String.fromCharCode(...png.subarray(i,i+8192));
+  return sendImageMedia(env,to,btoa(data),caption,'cartao-presente-elegance-18k.png');
+}
+async function sendImageMedia(env:Env,to:string,imageUrl:string,caption:string,fileName:string):Promise<void>{
   if (!env.EVOLUTION_API_URL || !env.EVOLUTION_API_KEY || !env.EVOLUTION_INSTANCE) throw new Error("EVOLUTION_NOT_CONFIGURED");
   const baseUrl = env.EVOLUTION_API_URL.trim().replace(/\/+$/, "");
   const apiKey = env.EVOLUTION_API_KEY.trim();
   const instance = env.EVOLUTION_INSTANCE.trim();
-  if (!/^https:\/\//i.test(baseUrl) || !/^https:\/\//i.test(imageUrl)) throw new Error("EVOLUTION_URL_INVALID");
+  if (!/^https:\/\//i.test(baseUrl)) throw new Error("EVOLUTION_URL_INVALID");
   const response = await fetch(`${baseUrl}/message/sendMedia/${encodeURIComponent(instance)}`, {
     method: "POST",
     headers: { apikey: apiKey, "Content-Type": "application/json" },

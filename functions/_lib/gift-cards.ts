@@ -1,7 +1,7 @@
 import type { Env } from "./types";
 import { currentCustomer, sha256 } from "./auth";
 import { apiError, json, readJson } from "./http";
-import { normalizeBrazilPhone, sendWhatsAppImage, sendWhatsAppMessage, whatsappConfigured } from "./whatsapp";
+import { normalizeBrazilPhone, sendWhatsAppPng, sendWhatsAppMessage, whatsappConfigured } from "./whatsapp";
 
 async function provider<T>(env:Env,path:string,body?:unknown):Promise<T>{
  const token=env.MERCADO_PAGO_ACCESS_TOKEN?.trim();
@@ -30,7 +30,6 @@ function deliveryMessage(card: ScheduledCard): string {
  return ["Você recebeu um Cartão Presente Elegance 18K!", `Para: ${card.recipient_name}`, `Valor: ${money}`, card.message || "", `Código: ${card.code}`, "Use no pagamento da sua compra: https://elegance18k.com/"].filter(Boolean).join("\n");
 }
 
-const GIFT_CARD_IMAGE_URL = "https://elegance18k.com/assets/gift-card-whatsapp.png";
 
 export async function sendScheduledGiftCards(env: Env): Promise<{ sent: number; failed: number }> {
  if (!whatsappConfigured(env)) return { sent: 0, failed: 0 };
@@ -49,7 +48,9 @@ export async function sendScheduledGiftCards(env: Env): Promise<{ sent: number; 
   try {
    const caption = deliveryMessage(card);
    try {
-    await sendWhatsAppImage(env, phone, GIFT_CARD_IMAGE_URL, caption);
+    const {renderGiftCard}=await import('./gift-card-image');
+    const image=await renderGiftCard(card);
+    await sendWhatsAppPng(env, phone, image, caption);
    } catch (mediaError) {
     // The code and recipient message must still be delivered if an Evolution
     // installation cannot download media from the public site.

@@ -11,6 +11,12 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
   const signature = request.headers.get("X-Stock-Signature") || "";
   const control = await env.DB.prepare("SELECT secret FROM bling_stock_control WHERE id=1").first<{ secret: string }>();
   if (!control || !await verifyStockTick(control.secret, timestamp, signature)) return apiError("Acesso restrito.", 403);
+  // Signed diagnostic renders only fictitious data, without delivery or DB writes.
+  if(new URL(request.url).searchParams.get('preview_image')==='1'){
+    const {renderGiftCard}=await import('../../_lib/gift-card-image');
+    const png=await renderGiftCard({recipient_name:'Exemplo',initial_cents:5000,message:'Parabéns pelo seu dia!'});
+    return json({ok:true,image_bytes:png.length});
+  }
   await sendPendingLoyaltyNotifications(env);
   await sendPendingStoreNotifications(env);
   return json({ ok: true, ...await sendScheduledGiftCards(env) });
