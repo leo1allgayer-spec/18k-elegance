@@ -43,7 +43,7 @@ if (mobileMenuButton && !mobileMenuPanel) {
 }
 mobileMenuButton?.setAttribute("aria-expanded", "false");
 // Navigation follows the published category list, not the old static demo links.
-const categoryMenus = [...document.querySelectorAll('.header nav, .store-header nav, .mobile-menu-panel')];
+const categoryMenus = [...document.querySelectorAll('.header nav, .store-header nav, .mobile-menu-panel, .category-tabs')];
 categoryMenus.forEach(nav => nav.querySelectorAll('a[href*="categoria="]').forEach(link => { link.hidden = true; link.style.display = 'none'; }));
 fetch('/api/categories', {cache:'no-store'}).then(response => {
   if (!response.ok) throw new Error('Categorias indisponíveis');
@@ -57,6 +57,9 @@ fetch('/api/categories', {cache:'no-store'}).then(response => {
       const link = document.createElement('a');
       link.href = 'catalogo.html?categoria=' + encodeURIComponent(category.slug);
       link.textContent = category.name;
+      const selected=new URLSearchParams(location.search).get('categoria')===category.slug;
+      link.classList.toggle('active',selected);
+      if(selected)link.setAttribute('aria-current','page');
       link.addEventListener('click', () => {
         mobileMenuPanel?.setAttribute('hidden','');
         mobileMenuButton?.setAttribute('aria-expanded','false');
