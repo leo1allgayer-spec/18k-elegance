@@ -33,6 +33,21 @@ test('Lip Lance requires one of four colors and persists the selected color',asy
  global.fetch=async()=>Response.json({id:'pref-color',sandbox_init_point:'https://example.test/pay'});
  try{for(const color of ['', 'Vermelho']){body.items[0].personalization={color};assert.notEqual((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,201);}assert.equal(db.prepare('SELECT COUNT(*) n FROM orders').get().n,0);body.items[0].personalization={color:'Rosa Pink'};assert.equal((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,201);assert.equal(JSON.parse(db.prepare('SELECT personalization_json FROM order_items').get().personalization_json).color,'Rosa Pink');}finally{global.fetch=original;db.close()}
 });
+test('paid order automatically creates and links its product before exporting; unpaid order does not',async()=>{
+ const {db,env}=fixture(),original=global.fetch,{stockSchema}=require('../functions/_lib/bling-stock.ts'),{exportPaidOrderToBling}=require('../functions/_lib/bling-orders.ts');
+ await stockSchema(env);db.exec("CREATE TABLE bling_tokens(id INTEGER PRIMARY KEY,access_token TEXT,refresh_token TEXT,expires_at TEXT); INSERT INTO bling_tokens VALUES(1,'test','test','2099-01-01')");order(db,1);let productPosts=0,salePosts=0;
+ global.fetch=async(url,opts={})=>{
+  if(url.includes('/pedidos/vendas?'))return Response.json({data:[]});
+  if(url.includes('/produtos?'))return Response.json({data:[]});
+  if(url.includes('/depositos?'))return Response.json({data:[{id:7,situacao:1,padrao:true}]});
+  if(url.endsWith('/produtos')){productPosts++;assert.equal(JSON.parse(opts.body).codigo,'piece-1');return Response.json({data:{id:777}});}
+  if(url.includes('/contatos?'))return Response.json({data:[{id:88,email:'owner@example.test'}]});
+  if(url.endsWith('/pedidos/vendas')){salePosts++;assert.equal(productPosts,1);assert.equal(JSON.parse(opts.body).itens[0].produto.id,777);return Response.json({data:{id:999}});}
+  throw new Error('Unexpected Bling call');
+ };
+ try{await exportPaidOrderToBling(env,1);assert.equal(productPosts,0);assert.equal(salePosts,0);await finalizeOrder(env,1);await exportPaidOrderToBling(env,1);await exportPaidOrderToBling(env,1);assert.equal(productPosts,1);assert.equal(salePosts,1);assert.equal(db.prepare('SELECT status FROM bling_order_exports').get().status,'sent');assert.equal(db.prepare('SELECT stock FROM product_variants').get().stock,0);}finally{global.fetch=original;db.close();}
+});
+
 test('Bling recovery preserves discount, freight and size and does not duplicate an existing sale',async()=>{
  const {db,env}=fixture(),original=global.fetch,{stockSchema}=require('../functions/_lib/bling-stock.ts'),{exportPaidOrderToBling}=require('../functions/_lib/bling-orders.ts');
  await stockSchema(env);db.exec("CREATE TABLE bling_tokens(id INTEGER PRIMARY KEY,access_token TEXT,refresh_token TEXT,expires_at TEXT); INSERT INTO bling_tokens VALUES(1,'test','test','2099-01-01'); INSERT INTO bling_stock_links(variant_id,bling_id,deposit_id) VALUES(1,777,1)");order(db,1);await finalizeOrder(env,1);db.exec("UPDATE orders SET shipping_cents=3000,discount_cents=3683 WHERE id=1; UPDATE order_items SET personalization_json='{\"size\":\"60 cm\"}' WHERE order_id=1");let payload,posts=0;

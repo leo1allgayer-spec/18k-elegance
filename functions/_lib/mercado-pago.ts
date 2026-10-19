@@ -332,6 +332,8 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
       env.DB.prepare("UPDATE payments SET status='approved' WHERE order_id=?").bind(orderId),
       env.DB.prepare("UPDATE gift_card_uses SET status='spent' WHERE order_id=?").bind(orderId),
     ]);
+    try { await exportPaidOrderToBling(env, orderId); }
+    catch (error) { console.error("Bling order export failed", orderId, String(error)); }
     return json({ok:true,order_number:orderNumber,checkout_url:origin+"/pagamento-retorno.html?status=success&pedido="+encodeURIComponent(orderNumber)},201,accessHeaders);
   }
   const preferenceBody = {

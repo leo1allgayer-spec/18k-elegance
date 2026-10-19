@@ -8,7 +8,7 @@ require.extensions['.ts'] = (module, filename) => module._compile(transformSync(
 }).code,filename);
 const {stockDecision,inventoryNumber} = require('../functions/_lib/stock-decision.ts');
 const {signStockTick,verifyStockTick} = require('../functions/_lib/stock-signature.ts');
-const {stockSchema,runStockSync} = require('../functions/_lib/bling-stock.ts');
+const {stockSchema,runStockSync,ensureOrderProductLinks} = require('../functions/_lib/bling-stock.ts');
 const scheduler = require('../workers/stock-scheduler/index.ts').default;
 
 function fixture() {
@@ -28,6 +28,33 @@ function fixture() {
     async batch(stmts) { db.exec('BEGIN'); try {const results=[];for(const stmt of stmts)results.push(await stmt.run());db.exec('COMMIT');return results;} catch(e){db.exec('ROLLBACK');throw e;} }
   };
   return {db,env:{DB:adapter}};
+}
+
+function productFixture(){
+  const f=fixture();f.db.exec(`ALTER TABLE products ADD COLUMN active INTEGER DEFAULT 1;
+    ALTER TABLE products ADD COLUMN sku TEXT DEFAULT 'TEST';
+    ALTER TABLE products ADD COLUMN description TEXT DEFAULT '';
+    ALTER TABLE products ADD COLUMN price_cents INTEGER DEFAULT 37900;
+    ALTER TABLE product_variants ADD COLUMN active INTEGER DEFAULT 1;
+    ALTER TABLE product_variants ADD COLUMN name TEXT DEFAULT 'Padrão';
+    ALTER TABLE product_variants ADD COLUMN sku TEXT DEFAULT 'TEST-PADRAO';
+    ALTER TABLE product_variants ADD COLUMN price_cents INTEGER;`);return f;
+}
+for(const scenario of ['create','existing','duplicate','same-name','uncertain','ambiguous-deposit']){
+ test('automatic paid-order product link: '+scenario,async()=>{
+  const {db,env}=productFixture(),original=global.fetch;await stockSchema(env);let posts=0;
+  const product={id:99,nome:scenario==='same-name'?'Test':'Other',codigo:scenario==='same-name'?'OTHER':'TEST-PADRAO',situacao:'A',formato:'S'};
+  global.fetch=async(url,options={})=>{
+   if(url.includes('/depositos?'))return Response.json({data:scenario==='ambiguous-deposit'?[{id:7,situacao:1},{id:8,situacao:1}]:[{id:7,situacao:1,padrao:true}]});
+   if(options.method==='POST'){posts++;assert.equal(JSON.parse(options.body).codigo,'TEST-PADRAO');if(scenario==='uncertain')throw new Error('timeout');return Response.json({data:{id:99}});}
+   return Response.json({data:scenario==='existing'?[product]:scenario==='duplicate'?[product,{...product,id:100}]:scenario==='same-name'?[product]:[]});
+  };
+  try{
+   if(['duplicate','same-name','ambiguous-deposit'].includes(scenario)){await assert.rejects(ensureOrderProductLinks(env,[1]));assert.equal(posts,0);assert.equal(db.prepare('SELECT COUNT(*) n FROM bling_stock_links').get().n,0);}
+   else if(scenario==='uncertain'){await assert.rejects(ensureOrderProductLinks(env,[1]));await assert.rejects(ensureOrderProductLinks(env,[1]));assert.equal(posts,1);}
+   else{await ensureOrderProductLinks(env,[1,1]);await ensureOrderProductLinks(env,[1]);assert.equal(posts,scenario==='create'?1:0);assert.equal(db.prepare('SELECT bling_id FROM bling_stock_links').get().bling_id,99);assert.equal(db.prepare('SELECT stock FROM product_variants').get().stock,5);}
+  }finally{global.fetch=original;db.close();}
+ });
 }
 
 test('decisions never silently accept concurrent changes, including equal decrements',()=>{

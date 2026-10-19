@@ -1,6 +1,6 @@
 import type { Env } from './types';
 import { blingAccessToken } from './bling';
-import { stockSchema } from './bling-stock';
+import { stockSchema, ensureOrderProductLinks } from './bling-stock';
 
 export async function exportPaidOrderToBling(env:Env,orderId:number):Promise<void>{
  await stockSchema(env);
@@ -30,7 +30,11 @@ async function exportLocked(env:Env,orderId:number){
   if(matches.length>1)throw new Error('Pedidos duplicados no Bling; confira manualmente.');
   if(matches.length===1){await sent(env,orderId,matches[0].id);return;}
   if(previous?.error?.startsWith('Envio incerto'))throw new Error(previous.error);
-  const items=await env.DB.prepare('SELECT i.*,l.bling_id FROM order_items i LEFT JOIN bling_stock_links l ON l.variant_id=i.variant_id WHERE i.order_id=?').bind(orderId).all<any>();
+  let items=await env.DB.prepare('SELECT i.*,l.bling_id FROM order_items i LEFT JOIN bling_stock_links l ON l.variant_id=i.variant_id WHERE i.order_id=?').bind(orderId).all<any>();
+  if(items.results.some(i=>!i.bling_id)){
+   await ensureOrderProductLinks(env,items.results.map(i=>i.variant_id));
+   items=await env.DB.prepare('SELECT i.*,l.bling_id FROM order_items i LEFT JOIN bling_stock_links l ON l.variant_id=i.variant_id WHERE i.order_id=?').bind(orderId).all<any>();
+  }
   if(!items.results.length||items.results.some(i=>!i.bling_id))throw new Error('Vincule todos os produtos do pedido ao Bling antes do envio.');
   let address:any={};try{address=JSON.parse(order.shipping_address_json||'{}')||{};}catch{}
   const endereco={endereco:address.street,numero:address.number,complemento:address.complement,bairro:address.neighborhood,cep:String(address.postal_code||'').replace(/\D/g,''),municipio:address.city,uf:address.state};

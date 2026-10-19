@@ -5,7 +5,7 @@ import { inventoryNumber, stockDecision } from "./stock-decision";
 type Link = { variant_id: number; bling_id: number; deposit_id: number; baseline: number | null;
   pending_target: number | null; status: string; stock: number; name: string; error: string | null };
 type RemoteProduct = { id: number; nome: string; codigo: string; situacao: string; formato: string };
-type Deposit = { id: number; descricao: string; situacao: number };
+type Deposit = { id: number; descricao: string; situacao: number; padrao?: boolean };
 type Balance = { produto: { id: number }; saldoFisicoTotal: number; saldoVirtualTotal: number };
 export type StockControl = { enabled: number; secret: string; lease: string | null; lease_until: number; last_run: string | null; last_error: string | null };
 
@@ -118,6 +118,27 @@ export async function linkStock(env: Env, variantId: number, blingId: number, de
   } finally { await release(env, lease); }
 }
 
+// Only called for approved orders. Reuse the guarded export path: a SKU match
+// links an existing product; an uncertain previous creation never gets repeated.
+export async function ensureOrderProductLinks(env: Env, variantIds: number[]) {
+  const missing: number[] = [];
+  for (const id of new Set(variantIds)) {
+    if (!Number.isSafeInteger(id) || id <= 0) throw new Error("Variante inválida no pedido.");
+    if (!await env.DB.prepare("SELECT 1 FROM bling_stock_links WHERE variant_id=?").bind(id).first()) missing.push(id);
+  }
+  if (!missing.length) return;
+  const catalog = await stockCatalog(env);
+  const active = catalog.deposits.filter(d => d.situacao === 1);
+  const defaults = active.filter(d => d.padrao === true);
+  const deposit = defaults.length === 1 ? defaults[0] : defaults.length === 0 && active.length === 1 ? active[0] : null;
+  if (!deposit) throw new Error("Defina um único depósito padrão ativo no Bling para o vínculo automático.");
+  for (const id of missing) {
+    // Another paid order may have finished this same variant in the meantime.
+    if (await env.DB.prepare("SELECT 1 FROM bling_stock_links WHERE variant_id=?").bind(id).first()) continue;
+    await exportStockProduct(env, id, deposit.id);
+  }
+}
+
 export async function exportStockProduct(env: Env, variantId: number, depositId: number) {
   await stockSchema(env);
   const lease = await acquire(env);
@@ -133,6 +154,7 @@ export async function exportStockProduct(env: Env, variantId: number, depositId:
     const previous = await env.DB.prepare("SELECT sku,bling_id FROM bling_stock_exports WHERE variant_id=?").bind(variantId)
       .first<{ sku: string; bling_id: number | null }>();
     const sku = previous?.sku || String(variant.sku);
+    if (!sku.trim() || sku === 'null' || sku === 'undefined') throw new Error("Produto sem SKU para vincular ao Bling.");
     const matches = catalog.products.filter(row => row.codigo === sku);
     if (matches.length > 1) throw new Error("Código duplicado no Bling. Vincule o produto manualmente.");
     let blingId = previous?.bling_id ?? matches[0]?.id;
