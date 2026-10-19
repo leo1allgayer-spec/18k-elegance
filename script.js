@@ -384,6 +384,7 @@ document.querySelector("#apply-coupon")?.addEventListener("click", async () => {
   const button = document.querySelector("#apply-coupon"), input = document.querySelector("#cart-coupon"), feedback = document.querySelector(".coupon-message");
   const code = input.value.trim().toUpperCase(), cart = getCart();
   if (!code) { feedback.textContent = "Digite o código do cupom."; return; }
+  if(code.startsWith('ELG-')&&window.eleganceGiftCard){window.eleganceGiftCard.setCode(code);input.value='';feedback.textContent='Esse é um cartão-presente. O código foi colocado no campo correto logo abaixo.';return;}
   button.disabled = true; button.textContent = "Validando…"; feedback.textContent = "";
   try {
     const items = cart.map(item => ({ product_id:Number(item.product_id), variant_id:Number(item.variant_id), quantity:Number(item.qty), personalization:item.personalization || undefined }));

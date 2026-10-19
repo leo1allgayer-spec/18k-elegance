@@ -89,7 +89,7 @@
         coupon:JSON.parse(localStorage.getItem('elegance-coupon')||'null')?.code||undefined,
       })});
       const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error?.message||'Não foi possível iniciar o pagamento.');
-      sessionStorage.setItem('elegance-last-order',result.order_number);location.assign(result.checkout_url);
+      sessionStorage.setItem('elegance-last-order',result.order_number);sessionStorage.removeItem('elegance-gift-card-code');location.assign(result.checkout_url);
     }catch(error){message.textContent=error.message;next.disabled=false;next.textContent='Confirmar e pagar';}
   }
   async function prefillAccount(){
