@@ -1,4 +1,34 @@
 const {test}=require('node:test');
+
+test('marketing settings reject arbitrary code and require an administrator',async()=>{
+ const {db,env}=fixture(),{onRequest:marketing}=require('../functions/api/admin/marketing.ts'),{onRequest:publicMarketing}=require('../functions/api/marketing.ts');
+ const settings={meta_pixel_id:'1499152092131624',google_tag_id:'G-ABC1234567',google_ads_id:'AW-123456789',google_ads_label:'Label_123'};
+ try{
+  assert.equal((await marketing({env,request:req('/api/admin/marketing',settings)})).status,403);
+  db.exec("UPDATE customers SET role='admin' WHERE id=1");const session=await createSession(env,1,'admin');
+  const save=body=>marketing({env,request:new Request('https://elegance18k.com/api/admin/marketing',{method:'PUT',headers:{Origin:'https://elegance18k.com','Content-Type':'application/json',Cookie:'elegance_session='+session.token},body:JSON.stringify(body)})});
+  assert.equal((await save(settings)).status,200);
+  for(const invalid of [{...settings,meta_pixel_id:'<script>alert(1)</script>'},{...settings,google_tag_id:'https://evil.test'},{...settings,google_ads_id:''},{...settings,html:'<script>'}])assert.equal((await save(invalid)).status,400);
+  const result=await publicMarketing({env,request:new Request('https://elegance18k.com/api/marketing')});assert.deepEqual((await result.json()).settings,settings);
+  const empty=Object.fromEntries(Object.keys(settings).map(k=>[k,'']));assert.equal((await save(empty)).status,200);
+ }finally{db.close();}
+});
+
+test('marketing loads only with consent, excludes private pages and verifies paid purchases',async()=>{
+ const vm=require('node:vm'),source=fs.readFileSync(require('node:path').join(__dirname,'../marketing.js'),'utf8');
+ async function run({consent,path='/',status='pending_payment',store=new Map()}={}){
+  const added=[],listeners={},calls=[];if(consent)store.set('elegance-marketing-consent-v1',consent);
+  const document={createElement:tag=>({tag,setAttribute(){},addEventListener(){},remove(){}}),head:{append:x=>added.push(x)},body:{append:x=>added.push(x)},addEventListener:(n,f)=>listeners[n]=f};
+  const ctx={document,location:{pathname:path,origin:'https://elegance18k.com',search:'?pedido=ELG-TEST',reload(){}},localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v)},sessionStorage:{getItem:()=>null},URLSearchParams,setTimeout:()=>{},fetch:async url=>{calls.push(url);return Response.json(url==='/api/marketing'?{settings:{meta_pixel_id:'1499152092131624',google_tag_id:'G-ABC1234567',google_ads_id:'',google_ads_label:''}}:{order:{status,total_cents:12345}})}};ctx.window=ctx;
+  await vm.runInNewContext(source,ctx);await new Promise(resolve=>setImmediate(resolve));return {ctx,added,calls,store,listeners};
+ }
+ for(const consent of [undefined,'rejected']){const r=await run({consent});assert.equal(r.added.filter(x=>x.tag==='script').length,0);assert.equal(r.ctx.fbq,undefined);}
+ const admin=await run({consent:'accepted',path:'/admin-demo'});assert.equal(admin.calls.length,0);
+ const visitor=await run({consent:'accepted'});assert.equal(visitor.added.filter(x=>x.tag==='script').length,2);assert.ok(visitor.ctx.fbq.queue.some(x=>x[0]==='init'&&x[1]==='1499152092131624'));assert.ok(visitor.ctx.fbq.queue.some(x=>x[1]==='PageView'));visitor.listeners['elegance:cart-added']();assert.ok(visitor.ctx.fbq.queue.some(x=>x[1]==='AddToCart'));
+ const pending=await run({consent:'accepted',path:'/pagamento-retorno',status:'pending_payment'});assert.ok(!pending.ctx.fbq.queue.some(x=>x[1]==='Purchase'));
+ const paid=await run({consent:'accepted',path:'/pagamento-retorno',status:'paid'});assert.equal(paid.ctx.fbq.queue.filter(x=>x[1]==='Purchase').length,1);assert.equal(paid.ctx.fbq.queue.find(x=>x[1]==='Purchase')[2].value,123.45);
+ const repeat=await run({consent:'accepted',path:'/pagamento-retorno',status:'paid',store:paid.store});assert.ok(!repeat.ctx.fbq.queue.some(x=>x[1]==='Purchase'));
+});
 test('receipt separates gift-card payment from the approved Mercado Pago payment',()=>{
  const vm=require('node:vm'),context={Intl,Date};vm.createContext(context);vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../admin-order-print.js'),'utf8').split('const printButton=')[0],context);
  const html=vm.runInContext(`printDocument({order:{order_number:'TESTE',status:'paid',total_cents:35654,gift_card_cents:5000,gift_card_status:'spent',payment_status:'approved',payment_amount_cents:30654},items:[]})`,context);
@@ -91,6 +121,7 @@ const {securityHeaders,privatePath}=require('../functions/_lib/security-headers.
 const {readBoundedBody}=require('../functions/_lib/http.ts');
 function fixture(){
  const db=new DatabaseSync(':memory:');
+ db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0039_marketing_settings.sql'),'utf8'));
  for(const file of ['0001_initial','0003_product_personalization','0004_product_personalizable','0008_customer_accounts_first_purchase','0009_product_details_and_personalization','0010_product_reviews','0011_gift_card_checkout','0012_whatsapp_recovery','0018_checkout_security','0019_security_hardening','0020_category_images','0021_admin_mfa','0022_required_personalization_text','0023_name_count_personalization','0024_gift_card_scheduled_delivery','0025_product_review_photos','0026_site_review_submissions','0028_bling_order_exports']){
   db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations',file+'.sql'),'utf8'));
  }

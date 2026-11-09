@@ -7,7 +7,7 @@ export function privatePath(pathname: string): boolean {
     || /^\/(?:package(?:-lock)?|tsconfig|wrangler)\.jsonc?$/.test(path);
 }
 
-export function securityHeaders(response: Response, nonce?: string): Response {
+export function securityHeaders(response: Response, nonce?: string, marketing = false): Response {
   const headers = new Headers(response.headers);
   headers.set('X-Content-Type-Options','nosniff');
   headers.set('X-Frame-Options','DENY');
@@ -19,10 +19,11 @@ export function securityHeaders(response: Response, nonce?: string): Response {
   headers.delete('Access-Control-Allow-Credentials');
   headers.set('Content-Security-Policy',[
     "default-src 'self'",
-    `script-src 'self'${nonce ? ` 'nonce-${nonce}'` : ''}`,
+    `script-src 'self'${marketing ? ' https://connect.facebook.net https://www.googletagmanager.com https://www.googleadservices.com https://www.google.com' : ''}${nonce ? ` 'nonce-${nonce}'` : ''}`,
     "script-src-attr 'none'", "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com", "img-src 'self' https: data: blob:",
-    "connect-src 'self' https://viacep.com.br", "media-src 'self' blob:",
+    "connect-src 'self' https://viacep.com.br" + (marketing ? " https://www.facebook.com https://connect.facebook.net https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://www.googleadservices.com https://www.google.com https://googleads.g.doubleclick.net" : ''), "media-src 'self' blob:",
+    marketing ? 'frame-src https://www.googletagmanager.com https://td.doubleclick.net' : "frame-src 'none'",
     "object-src 'none'", "base-uri 'none'", "frame-ancestors 'none'", "form-action 'self'",
     'upgrade-insecure-requests',
   ].join('; '));

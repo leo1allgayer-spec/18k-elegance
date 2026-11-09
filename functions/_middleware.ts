@@ -247,6 +247,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.includes("text/html") || response.status >= 400) return securityHeaders(response);
   const nonce = crypto.randomUUID().replaceAll('-','');
+  const marketingPage = !/^\/(admin|conta|rastreamento)(?:[-/.]|$)/.test(url.pathname);
   const seo = await resolveSeo(url, context.env);
   const headers = new Headers(response.headers);
   // Nonces must not be shared through HTML caches.
@@ -254,10 +255,13 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   headers.set("Link", `<${seo.canonical}>; rel="canonical"`);
   if (seo.robots?.startsWith("noindex")) headers.set("X-Robots-Tag", seo.robots);
   const transformed = new HTMLRewriter()
+    .on('head', {element(element) {
+      if (marketingPage) element.append('<link rel="stylesheet" href="/marketing.css?v=20261109"><script defer src="/marketing.js?v=20261109"></script>',{html:true});
+    }})
     .on("title", new SetTitle(seo.title))
     .on('meta[name="description"],meta[name="robots"],link[rel="canonical"],meta[property^="og:"],meta[name^="twitter:"]', new RemoveElement())
     .on('script', {element(element) { element.setAttribute('nonce',nonce); }})
     .on("head", new AppendSeo(seo,nonce))
     .transform(new Response(response.body, { status: response.status, statusText: response.statusText, headers }));
-  return securityHeaders(transformed,nonce);
+  return securityHeaders(transformed,nonce,marketingPage);
 };
