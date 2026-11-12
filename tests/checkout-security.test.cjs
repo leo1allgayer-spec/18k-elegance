@@ -1,5 +1,57 @@
 const {test}=require('node:test');
 
+test('coupon edit form preloads percentage, fixed reais, limits and inactive status',()=>{
+ const vm=require('node:vm'),ctx={document:{addEventListener(){}},Intl,Date};vm.createContext(ctx);
+ vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../admin-live.js'),'utf8').split('function table(')[0],ctx);
+ const percent=vm.runInContext("couponFields({id:1,code:'TEST',type:'percent',value:15,minimum_cents:5000,uses:2,max_uses:10,active:1,expires_at:'2026-12-01'})",ctx);
+ assert.ok(percent.includes('value="15"'));assert.ok(percent.includes('value="50"'));assert.ok(percent.includes('value="2026-12-01"'));assert.ok(percent.includes('readonly'));
+ const fixed=vm.runInContext("couponFields({id:1,code:'TEST',type:'fixed',value:2500,active:0})",ctx);assert.ok(fixed.includes('value="25"'));assert.ok(!/name="active"[^>]*checked/.test(fixed));
+});
+
+test('coupon editing preserves uses and existing orders and rejects invalid percentages',async()=>{
+ const {db,env}=fixture();db.exec("UPDATE customers SET role='admin' WHERE id=1; INSERT INTO coupons(id,code,type,value,minimum_cents,uses,active) VALUES(99,'EDITAR','percent',10,0,3,1)");order(db,1);db.exec('UPDATE orders SET discount_cents=1000,total_cents=9000,coupon_id=99 WHERE id=1');const session=await createSession(env,1,'admin');
+ const update=(body,cookie='elegance_session='+session.token)=>onRequest({env,request:new Request('https://elegance18k.com/api/admin/coupons/99',{method:'PUT',headers:{Origin:'https://elegance18k.com','Content-Type':'application/json',Cookie:cookie},body:JSON.stringify(body)})});
+ try{
+  assert.equal((await update({value:15})).status,200);let row=db.prepare('SELECT * FROM coupons WHERE id=99').get();assert.equal(row.value,15);assert.equal(row.uses,3);assert.equal(row.code,'EDITAR');assert.equal(db.prepare('SELECT total_cents FROM orders WHERE id=1').get().total_cents,9000);
+  for(const body of [{value:101},{value:-1},{value:1.5},{max_uses:2},{minimum_cents:-1},{code:'RENOMEADO'}])assert.equal((await update(body)).status,400);
+  assert.equal((await update({value:20},'')).status,403);
+  assert.equal((await update({type:'fixed',value:2500,active:false})).status,200);row=db.prepare('SELECT * FROM coupons WHERE id=99').get();assert.equal(row.value,2500);assert.equal(row.active,0);assert.equal(row.uses,3);
+ }finally{db.close();}
+});
+
+test('CPF is mandatory and validated at registration and saved only in the private account',async()=>{
+ const {db,env}=fixture(),body={name:'Cliente Teste',email:'new@example.test',phone:'51999990000',password:'secure-test-password'};
+ try{
+  for(const cpf of [undefined,'11111111111','12345678901','52998224724'])assert.equal((await onRequest({env,request:req('/api/auth/register',{...body,cpf})})).status,400);
+  const response=await onRequest({env,request:req('/api/auth/register',{...body,cpf:'529.982.247-25'})});assert.equal(response.status,201);const cookie=response.headers.get('Set-Cookie').split(';')[0];assert.equal(db.prepare("SELECT cpf FROM customers WHERE email='new@example.test'").get().cpf,'52998224725');
+  const account=await onRequest({env,request:new Request('https://elegance18k.com/api/account',{headers:{Cookie:cookie}})});assert.equal((await account.json()).customer.cpf,'52998224725');
+  const me=await onRequest({env,request:new Request('https://elegance18k.com/api/auth/me',{headers:{Cookie:cookie}})});assert.ok(!(await me.text()).includes('52998224725'));
+ }finally{db.close();}
+});
+
+test('checkout rejects invalid CPF and snapshots valid CPF without overwriting an existing guest identity',async()=>{
+ const {db,env}=fixture(),original=global.fetch;db.exec("UPDATE customers SET cpf='11144477735' WHERE id=1");global.fetch=async()=>Response.json({id:'pref',sandbox_init_point:'https://example.test/pay'});
+ try{
+  const body=await checkout().json();body.customer.cpf='12345678901';assert.equal((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,400);
+  body.customer.cpf='529.982.247-25';assert.equal((await createMercadoPagoCheckout(req('/api/checkout/mercado-pago',body),env)).status,201);assert.equal(db.prepare('SELECT customer_cpf FROM orders').get().customer_cpf,'52998224725');assert.equal(db.prepare('SELECT cpf FROM customers WHERE id=1').get().cpf,'11144477735');
+ }finally{global.fetch=original;db.close();}
+});
+
+for(const scenario of ['create','fill-empty','conflict'])test('Bling contact CPF: '+scenario,async()=>{
+ const {db,env}=fixture(),original=global.fetch,{stockSchema}=require('../functions/_lib/bling-stock.ts'),{exportPaidOrderToBling}=require('../functions/_lib/bling-orders.ts');await stockSchema(env);db.exec("CREATE TABLE bling_tokens(id INTEGER PRIMARY KEY,access_token TEXT,refresh_token TEXT,expires_at TEXT); INSERT INTO bling_tokens VALUES(1,'test','test','2099-01-01'); INSERT INTO bling_stock_links(variant_id,bling_id,deposit_id) VALUES(1,777,1)");order(db,1);await finalizeOrder(env,1);let creates=0,updates=0,sales=0;
+ global.fetch=async(url,opts={})=>{
+  if(url.includes('/pedidos/vendas?'))return Response.json({data:[]});
+  if(url.includes('/contatos?'))return Response.json({data:scenario==='create'?[]:[{id:88,email:'owner@example.test'}]});
+  if(url.endsWith('/contatos/88')){
+   if(opts.method==='PUT'){updates++;const b=JSON.parse(opts.body);assert.equal(b.numeroDocumento,'52998224725');assert.equal(b.informacoesContato,'Preserve');return Response.json({data:{id:88}});}
+   return Response.json({data:{id:88,nome:'Original',tipo:'F',situacao:'A',numeroDocumento:scenario==='conflict'?'11144477735':'',informacoesContato:'Preserve',endereco:{geral:{municipio:'Sapucaia'}}}});
+  }
+  if(url.endsWith('/contatos')){creates++;assert.equal(JSON.parse(opts.body).numeroDocumento,'52998224725');return Response.json({data:{id:88}});}
+  if(url.endsWith('/pedidos/vendas')){sales++;return Response.json({data:{id:999}});}throw Error('Unexpected API');
+ };
+ try{await exportPaidOrderToBling(env,1);assert.equal(creates,scenario==='create'?1:0);assert.equal(updates,scenario==='fill-empty'?1:0);assert.equal(sales,scenario==='conflict'?0:1);if(scenario==='conflict')assert.match(db.prepare('SELECT error FROM bling_order_exports').get().error,/diverge/);}finally{global.fetch=original;db.close();}
+});
+
 test('marketing settings reject arbitrary code and require an administrator',async()=>{
  const {db,env}=fixture(),{onRequest:marketing}=require('../functions/api/admin/marketing.ts'),{onRequest:publicMarketing}=require('../functions/api/marketing.ts');
  const settings={meta_pixel_id:'1499152092131624',google_tag_id:'G-ABC1234567',google_ads_id:'AW-123456789',google_ads_label:'Label_123'};
@@ -71,7 +123,7 @@ test('paid order automatically creates and links its product before exporting; u
   if(url.includes('/produtos?'))return Response.json({data:[]});
   if(url.includes('/depositos?'))return Response.json({data:[{id:7,situacao:1,padrao:true}]});
   if(url.endsWith('/produtos')){productPosts++;assert.equal(JSON.parse(opts.body).codigo,'piece-1');return Response.json({data:{id:777}});}
-  if(url.includes('/contatos?'))return Response.json({data:[{id:88,email:'owner@example.test'}]});
+  if(url.includes('/contatos?'))return Response.json({data:[{id:88,email:'owner@example.test'}]});if(url.includes('/contatos/'))return Response.json({data:{id:88,nome:'Original',tipo:'F',situacao:'A',numeroDocumento:'52998224725'}});
   if(url.endsWith('/pedidos/vendas')){salePosts++;assert.equal(productPosts,1);assert.equal(JSON.parse(opts.body).itens[0].produto.id,777);return Response.json({data:{id:999}});}
   throw new Error('Unexpected Bling call');
  };
@@ -81,7 +133,7 @@ test('paid order automatically creates and links its product before exporting; u
 test('Bling recovery preserves discount, freight and size and does not duplicate an existing sale',async()=>{
  const {db,env}=fixture(),original=global.fetch,{stockSchema}=require('../functions/_lib/bling-stock.ts'),{exportPaidOrderToBling}=require('../functions/_lib/bling-orders.ts');
  await stockSchema(env);db.exec("CREATE TABLE bling_tokens(id INTEGER PRIMARY KEY,access_token TEXT,refresh_token TEXT,expires_at TEXT); INSERT INTO bling_tokens VALUES(1,'test','test','2099-01-01'); INSERT INTO bling_stock_links(variant_id,bling_id,deposit_id) VALUES(1,777,1)");order(db,1);await finalizeOrder(env,1);db.exec("UPDATE orders SET shipping_cents=3000,discount_cents=3683 WHERE id=1; UPDATE order_items SET personalization_json='{\"size\":\"60 cm\"}' WHERE order_id=1");let payload,posts=0;
- global.fetch=async(url,opts)=>{if(url.includes('/pedidos/vendas?')){assert.ok(url.includes('numerosLojas%5B%5D=ELG-1'));return Response.json({data:[]});}if(url.includes('/contatos?'))return Response.json({data:[{id:88,email:'owner@example.test'}]});posts++;payload=JSON.parse(opts.body);return Response.json({data:{id:999}})};
+ global.fetch=async(url,opts)=>{if(url.includes('/pedidos/vendas?')){assert.ok(url.includes('numerosLojas%5B%5D=ELG-1'));return Response.json({data:[]});}if(url.includes('/contatos?'))return Response.json({data:[{id:88,email:'owner@example.test'}]});if(url.includes('/contatos/'))return Response.json({data:{id:88,nome:'Original',tipo:'F',situacao:'A',numeroDocumento:'52998224725'}});posts++;payload=JSON.parse(opts.body);return Response.json({data:{id:999}})};
  try{await exportPaidOrderToBling(env,1);assert.equal(payload.contato.id,88);assert.equal(payload.desconto.valor,36.83);assert.equal(payload.transporte.frete,30);assert.ok(payload.itens[0].descricao.includes('60 cm'));assert.equal(db.prepare('SELECT status FROM bling_order_exports').get().status,'sent');await exportPaidOrderToBling(env,1);assert.equal(posts,1);db.exec("UPDATE bling_order_exports SET status='error',bling_order_id=NULL");global.fetch=async()=>Response.json({data:[{id:999,numeroLoja:'ELG-1'}]});await exportPaidOrderToBling(env,1);assert.equal(db.prepare('SELECT bling_order_id FROM bling_order_exports').get().bling_order_id,999);}finally{global.fetch=original;db.close()}
 });
 test('heart necklace requires a valid children model and preserves it in the order',async()=>{
@@ -133,6 +185,7 @@ function fixture(){
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0036_product_choice_options.sql'),'utf8'));
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0037_gift_card_sender.sql'),'utf8'));
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0038_product_finishes.sql'),'utf8'));
+ db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0040_customer_order_cpf.sql'),'utf8'));
  db.exec(`INSERT INTO customers(id,name,email,phone,password_hash,password_salt,account_claimed) VALUES(1,'Original','owner@example.test','51999990000','unchanged','unchanged',0);
  INSERT INTO loyalty_accounts(customer_id) VALUES(1);
  INSERT INTO products(id,name,slug,sku,price_cents) VALUES(1,'Piece','piece','piece',10000);
@@ -141,14 +194,14 @@ function fixture(){
  return {db,env:{DB:adapter,MERCADO_PAGO_ACCESS_TOKEN:'TEST-local-only'}};
 }
 const req=(path,body,headers={})=>new Request('https://elegance18k.com'+path,{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://elegance18k.com',...headers},body:JSON.stringify(body)});
-const checkout=()=>req('/api/checkout/mercado-pago',{customer:{name:'Changed',email:'owner@example.test',phone:'51888880000',cpf:'12345678901'},shipping:{method:'pickup'},items:[{product_id:1,variant_id:1,quantity:1}]});
-function order(db,id){db.prepare(`INSERT INTO orders(id,order_number,customer_id,subtotal_cents,total_cents,shipping_method) VALUES(?,?,1,10000,10000,'pickup')`).run(id,'ELG-'+id);db.prepare(`INSERT INTO order_items(order_id,product_id,variant_id,product_name,unit_price_cents,quantity) VALUES(?,1,1,'Piece',10000,1)`).run(id)}
+const checkout=()=>req('/api/checkout/mercado-pago',{customer:{name:'Changed',email:'owner@example.test',phone:'51888880000',cpf:'52998224725'},shipping:{method:'pickup'},items:[{product_id:1,variant_id:1,quantity:1}]});
+function order(db,id){db.prepare(`INSERT INTO orders(id,order_number,customer_id,subtotal_cents,total_cents,shipping_method,customer_cpf) VALUES(?,?,1,10000,10000,'pickup','52998224725')`).run(id,'ELG-'+id);db.prepare(`INSERT INTO order_items(order_id,product_id,variant_id,product_name,unit_price_cents,quantity) VALUES(?,1,1,'Piece',10000,1)`).run(id)}
 
 test('registration cannot claim an existing guest or admin account',async()=>{
  const {db,env}=fixture();
  for(const role of ['customer','admin']){
   db.prepare('UPDATE customers SET role=? WHERE id=1').run(role);
-  const response=await onRequest({env,request:req('/api/auth/register',{name:'Intruder',email:'owner@example.test',password:'new-password'})});
+  const response=await onRequest({env,request:req('/api/auth/register',{name:'Intruder',email:'owner@example.test',password:'new-password',cpf:'52998224725'})});
   assert.equal(response.status,409);assert.equal(db.prepare('SELECT password_hash FROM customers').get().password_hash,'unchanged');assert.equal(db.prepare('SELECT COUNT(*) n FROM sessions').get().n,0);
  } db.close();
 });

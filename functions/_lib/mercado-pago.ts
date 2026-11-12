@@ -6,6 +6,7 @@ import { calculateCorreiosQuotes } from "./correios";
 import { giftCardBalance, syncGiftPayment } from "./gift-cards";
 import { reservationStatements, releaseCheckout, finalizeOrder } from './checkout-stock';
 import { exportPaidOrderToBling } from './bling-orders';
+import { normalizedCpf } from './cpf';
 import { loyaltyOverview } from './loyalty';
 import { sendLoyaltyNotification } from './loyalty-notifications';
 import { sendStoreNotification } from './store-notifications';
@@ -75,9 +76,9 @@ async function customerId(env: Env, customer: NonNullable<CheckoutBody["customer
   }
   const temporaryCredentials = await hashPassword(crypto.randomUUID());
   try {
-    const result = await env.DB.prepare(`INSERT INTO customers(name,email,phone,password_hash,password_salt)
-      VALUES(?,?,?,?,?)`).bind(customer.name!.trim(), email, customer.phone?.trim() || null,
-      temporaryCredentials.hash, temporaryCredentials.salt).run();
+    const result = await env.DB.prepare(`INSERT INTO customers(name,email,phone,password_hash,password_salt,cpf)
+      VALUES(?,?,?,?,?,?)`).bind(customer.name!.trim(), email, customer.phone?.trim() || null,
+      temporaryCredentials.hash, temporaryCredentials.salt,normalizedCpf(customer.cpf)).run();
     const id = Number(result.meta.last_row_id);
     await env.DB.batch([
       env.DB.prepare("INSERT INTO carts(customer_id) VALUES(?)").bind(id),
@@ -196,7 +197,8 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
   if (body.payment_method && !['pix','other'].includes(body.payment_method)) return apiError('Forma de pagamento inválida.');
   const customer = body.customer || {};
   const email = normalizeEmail(customer.email || "");
-  if ((customer.name?.trim().length || 0) < 2 || (customer.name?.length || 0) > 150 || email.length>254 || !validEmail(email) || digits(customer.phone || "").length < 10 || digits(customer.phone || '').length>13 || digits(customer.cpf || "").length !== 11) {
+  const cpf=normalizedCpf(customer.cpf);
+  if ((customer.name?.trim().length || 0) < 2 || (customer.name?.length || 0) > 150 || email.length>254 || !validEmail(email) || digits(customer.phone || "").length < 10 || digits(customer.phone || '').length>13 || !cpf) {
     return apiError("Revise nome, e-mail, CPF e celular.", 400, "INVALID_CUSTOMER");
   }
   let products: ProductRow[];
@@ -213,6 +215,8 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
   }
   const subtotal = products.reduce((sum, item) => sum + item.unit_price_cents * item.stock, 0);
   const id = await customerId(env, customer);
+  const authenticated=await currentCustomer(request,env);
+  if(authenticated?.id===id)await env.DB.prepare('UPDATE customers SET cpf=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').bind(cpf,id).run();
   if (body.gift_card_code) {
     const signedIn = await currentCustomer(request, env);
     if (!signedIn || signedIn.id !== id) return apiError("Entre na conta correspondente ao e-mail do pedido para usar o cartão.",401);
@@ -286,8 +290,8 @@ export async function createMercadoPagoCheckout(request: Request, env: Env): Pro
   if (preferredDate && (!/^\d{4}-\d{2}-\d{2}$/.test(preferredDate)||!Number.isFinite(Date.parse(preferredDate+'T12:00:00Z'))||new Date(preferredDate+'T12:00:00Z').toISOString().slice(0,10)!==preferredDate||preferredDate<today)) return apiError('Revise a data preferida para receber por motoboy.',400,'INVALID_DELIVERY_PREFERENCE');
   if (preferredTime && (!/^([01]\d|2[0-3]):[0-5]\d$/.test(preferredTime)||!preferredDate)) return apiError('Informe uma data e um horário válidos para a preferência de entrega.',400,'INVALID_DELIVERY_PREFERENCE');
   const address = shippingMethod === "pickup" ? null : JSON.stringify({...body.shipping,preferred_delivery_date:preferredDate||undefined,preferred_delivery_time:preferredTime||undefined});
-  const orderResult = await env.DB.prepare(`INSERT INTO orders(order_number,customer_id,status,subtotal_cents,discount_cents,shipping_cents,total_cents,shipping_method,shipping_address_json,coupon_id)
-    VALUES(?,?,'pending_payment',?,?,?,?,?,?,?)`).bind(orderNumber, id, subtotal, discount.cents, shippingCents, total, shippingMethod, address, discount.couponId).run();
+  const orderResult = await env.DB.prepare(`INSERT INTO orders(order_number,customer_id,status,subtotal_cents,discount_cents,shipping_cents,total_cents,shipping_method,shipping_address_json,coupon_id,customer_cpf)
+    VALUES(?,?,'pending_payment',?,?,?,?,?,?,?,?)`).bind(orderNumber, id, subtotal, discount.cents, shippingCents, total, shippingMethod, address, discount.couponId,cpf).run();
   const orderId = Number(orderResult.meta.last_row_id);
   const accessToken = randomToken();
   const accessHeaders = {'Set-Cookie':orderCookie(orderNumber,accessToken)};

@@ -1,6 +1,7 @@
 import type { Env } from './types';
 import { blingAccessToken } from './bling';
 import { stockSchema, ensureOrderProductLinks } from './bling-stock';
+import { normalizedCpf } from './cpf';
 
 export async function exportPaidOrderToBling(env:Env,orderId:number):Promise<void>{
  await stockSchema(env);
@@ -13,13 +14,13 @@ async function exportLocked(env:Env,orderId:number){
  await env.DB.prepare("INSERT OR IGNORE INTO bling_order_exports(order_id,status) VALUES(?,'pending')").bind(orderId).run();
  const previous=await env.DB.prepare('SELECT status,error FROM bling_order_exports WHERE order_id=?').bind(orderId).first<{status:string;error:string|null}>();
  if(previous?.status==='sent')return;
- const order=await env.DB.prepare("SELECT o.*,c.name customer_name,c.email customer_email,c.phone customer_phone FROM orders o JOIN customers c ON c.id=o.customer_id WHERE o.id=? AND o.status IN ('paid','preparing','shipped','delivered')").bind(orderId).first<any>();
+ const order=await env.DB.prepare("SELECT o.*,c.name customer_name,c.email customer_email,c.phone customer_phone,c.cpf customer_profile_cpf FROM orders o JOIN customers c ON c.id=o.customer_id WHERE o.id=? AND o.status IN ('paid','preparing','shipped','delivered')").bind(orderId).first<any>();
  if(!order)return;
  let posting=false;
  try{
   const token=await blingAccessToken(env);
-  const api=async(path:string,payload?:unknown)=>{
-   const r=await fetch('https://api.bling.com.br/Api/v3'+path,{method:payload?'POST':'GET',redirect:'manual',signal:AbortSignal.timeout(15000),headers:{Authorization:`Bearer ${token}`,Accept:'application/json','Content-Type':'application/json'},body:payload?JSON.stringify(payload):undefined});
+  const api=async(path:string,payload?:unknown,method=payload?'POST':'GET')=>{
+   const r=await fetch('https://api.bling.com.br/Api/v3'+path,{method,redirect:'manual',signal:AbortSignal.timeout(15000),headers:{Authorization:`Bearer ${token}`,Accept:'application/json','Content-Type':'application/json'},body:payload?JSON.stringify(payload):undefined});
    const b:any=await r.json().catch(()=>({}));
    if(!r.ok)throw new Error(`Bling HTTP ${r.status}: ${b.error?.message||'requisição recusada'} ${(b.error?.fields||[]).map((f:any)=>f.msg).filter(Boolean).join('; ')}`.slice(0,400));
    return b.data;
@@ -30,6 +31,8 @@ async function exportLocked(env:Env,orderId:number){
   if(matches.length>1)throw new Error('Pedidos duplicados no Bling; confira manualmente.');
   if(matches.length===1){await sent(env,orderId,matches[0].id);return;}
   if(previous?.error?.startsWith('Envio incerto'))throw new Error(previous.error);
+  const cpf=normalizedCpf(order.customer_cpf||order.customer_profile_cpf);
+  if(!cpf)throw new Error('CPF ausente ou inválido. Solicite ao cliente que complete os dados antes do envio ao Bling.');
   let items=await env.DB.prepare('SELECT i.*,l.bling_id FROM order_items i LEFT JOIN bling_stock_links l ON l.variant_id=i.variant_id WHERE i.order_id=?').bind(orderId).all<any>();
   if(items.results.some(i=>!i.bling_id)){
    await ensureOrderProductLinks(env,items.results.map(i=>i.variant_id));
@@ -43,7 +46,24 @@ async function exportLocked(env:Env,orderId:number){
   const exact=contacts.filter((c:any)=>String(c.email||'').toLowerCase()===order.customer_email.toLowerCase());
   if(exact.length>1)throw new Error('Contatos duplicados no Bling; confira manualmente.');
   let contactId=exact[0]?.id;
-  if(!contactId){const contact=await api('/contatos',{nome:order.customer_name,tipo:'F',situacao:'A',email:order.customer_email,telefone:order.customer_phone||undefined,endereco:address.street?{geral:endereco}:undefined});contactId=contact?.id;}
+  if(!contactId){
+   const byDocument=await api('/contatos?'+new URLSearchParams({numeroDocumento:cpf,criterio:'1',limite:'100'}));
+   if(!Array.isArray(byDocument))throw new Error('Consulta de contatos inválida');
+   const matching=byDocument.filter(c=>String(c.numeroDocumento||'').replace(/\D/g,'')===cpf);
+   if(matching.length>1)throw new Error('Contatos duplicados no Bling; confira manualmente.');
+   contactId=matching[0]?.id;
+  }
+  if(contactId){
+   const detail=await api('/contatos/'+contactId);
+   if(!detail?.nome||!detail?.tipo||!detail?.situacao)throw new Error('Não foi possível conferir os dados do contato no Bling.');
+   if(detail.tipo!=='F')throw new Error('O contato no Bling não é pessoa física. Confira o cadastro manualmente.');
+   const existingDocument=String(detail.numeroDocumento||'').replace(/\D/g,'');
+   if(existingDocument && existingDocument!==cpf)throw new Error('O documento do contato no Bling diverge do CPF do pedido. Confira manualmente.');
+   if(!existingDocument){
+    const {id:ignored,...preserved}=detail;
+    await api('/contatos/'+contactId,{...preserved,numeroDocumento:cpf},'PUT');
+   }
+  }else{const contact=await api('/contatos',{nome:order.customer_name,tipo:'F',situacao:'A',numeroDocumento:cpf,email:order.customer_email,telefone:order.customer_phone||undefined,endereco:address.street?{geral:endereco}:undefined});contactId=contact?.id;}
   if(!contactId)throw new Error('Contato não confirmado pelo Bling');
   const date=order.created_at.slice(0,10);
   const payload={numeroLoja:order.order_number,data:date,dataSaida:date,dataPrevista:date,contato:{id:contactId},desconto:{valor:order.discount_cents/100,unidade:'REAL'},transporte:{frete:order.shipping_cents/100,etiqueta:address.street?{nome:order.customer_name,...endereco}:undefined},observacoesInternas:`Pagamento aprovado no site. Entrega: ${order.shipping_method}. ${address.preferred_delivery_date||''} ${address.preferred_delivery_time||''}`.trim(),itens:items.results.map(item=>{let p:any={};try{p=JSON.parse(item.personalization_json||'{}')||{};}catch{}return {produto:{id:item.bling_id},quantidade:item.quantity,valor:item.unit_price_cents/100,descricao:[item.product_name,p.finish&&`Acabamento: ${p.finish}`,p.color&&`Cor: ${p.color}`,p.size&&`Tamanho: ${p.size}`,p.children_model&&`Modelo: ${p.children_model}`,p.engraving_text&&`Gravação: ${p.engraving_text}`].filter(Boolean).join(' — ')};}),parcelas:[]};

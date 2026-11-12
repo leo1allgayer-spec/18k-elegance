@@ -97,7 +97,7 @@
       const response=await fetch('/api/account',{credentials:'same-origin'});if(!response.ok)return;
       const data=await response.json(),customer=data.customer||{},address=data.address||{};
       const fill=(name,value)=>{const input=form.elements[name];if(input&&!input.value&&value){input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));}};
-      fill('name',customer.name);fill('email',customer.email);fill('phone',customer.phone);
+      fill('name',customer.name);fill('email',customer.email);fill('phone',customer.phone);fill('cpf',customer.cpf);
       fill('postal_code',address.postal_code);fill('street',address.street);fill('number',address.number);fill('complement',address.complement);fill('neighborhood',address.neighborhood);
       fill('city_state',[address.city,address.state].filter(Boolean).join(' - '));
       if(data.first_purchase_eligible){message.textContent='Seu desconto de primeira compra será aplicado automaticamente ao pagamento.';}

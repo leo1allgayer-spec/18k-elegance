@@ -1,4 +1,5 @@
 import { adminMfa, verifyAdminFactor, mfaEnabled } from "../_lib/admin-mfa";
+import { normalizedCpf } from '../_lib/cpf';
 import { loyaltyOverview } from '../_lib/loyalty';
 import { motoboyRates,saveMotoboyRates } from '../_lib/motoboy';
 import type { Env } from "../_lib/types";
@@ -10,8 +11,8 @@ import { blingCallback, blingConnect, blingStatus, blingDiagnostics, disconnectB
 import { adminPersonalizationImage, publicProductImage, uploadPersonalization, uploadProductImage } from "../_lib/personalization";
 import { normalizeBrazilPhone, sendWhatsAppMessage, whatsappConfigured } from "../_lib/whatsapp";
 
-type RegisterBody = { name?: string; email?: string; phone?: string; birth_date?: string; password?: string };
-type AccountBody = { name?: string; phone?: string; birth_date?: string };
+type RegisterBody = { name?: string; email?: string; phone?: string; cpf?: string; birth_date?: string; password?: string };
+type AccountBody = { name?: string; phone?: string; cpf?: string; birth_date?: string };
 type AddressBody = { postal_code?: string; street?: string; number?: string; complement?: string; neighborhood?: string; city?: string; state?: string };
 type LoginBody = { otp?: string; email?: string; password?: string };
 type ForgotPasswordBody = { phone?: string };
@@ -244,12 +245,25 @@ async function adminCoupons(env: Env): Promise<Response> {
   return json({ ok: true, coupons: result.results });
 }
 
-async function saveCoupon(request: Request, env: Env): Promise<Response> {
-  const body = await readJson<CouponBody>(request);
+async function saveCoupon(request: Request, env: Env, id?: number): Promise<Response> {
+  const existing = id ? await env.DB.prepare('SELECT * FROM coupons WHERE id=?').bind(id).first<CouponBody & {uses:number}>() : null;
+  if (id && !existing) return apiError('Cupom não encontrado.',404);
+  const body = {...existing,...await readJson<CouponBody>(request)};
   const code = body.code?.trim().toUpperCase() || "";
-  if (!code || !["percent", "fixed"].includes(body.type || "")) return apiError("Informe código e tipo do cupom.");
-  if (integer(body.value) <= 0 || (body.type === "percent" && integer(body.value) > 100)) return apiError("Informe um desconto válido.");
+  if (!code || code.length>80 || !["percent", "fixed"].includes(body.type || "")) return apiError("Informe código e tipo do cupom.");
+  if (existing && code !== existing.code) return apiError('O código de um cupom existente não pode ser alterado.');
+  if (!Number.isSafeInteger(body.value) || Number(body.value)<=0 || (body.type==='percent' && Number(body.value)>100)) return apiError('Informe um desconto válido (percentual inteiro de 1 a 100 ou valor fixo em centavos).');
+  if (body.minimum_cents!==undefined && (!Number.isSafeInteger(body.minimum_cents)||body.minimum_cents<0)) return apiError('Compra mínima inválida.');
+  if (body.max_uses!=null && (!Number.isSafeInteger(body.max_uses)||body.max_uses<1||body.max_uses<(existing?.uses||0))) return apiError('O limite de usos deve ser positivo e não pode ser menor que os usos já registrados.');
+  if (body.active!==undefined && typeof body.active!=='boolean' && !(existing && [0,1].includes(Number(body.active)))) return apiError('Situação inválida.');
+  for(const date of [body.starts_at,body.expires_at])if(date && (!/^\d{4}-\d{2}-\d{2}(?:[T ][\d:.Z+-]+)?$/.test(date)||!Number.isFinite(Date.parse(date))))return apiError('Data do cupom inválida.');
+  if(body.starts_at&&body.expires_at&&Date.parse(body.starts_at)>Date.parse(body.expires_at))return apiError('A validade precisa ser posterior ao início.');
   try {
+    if (id) {
+      await env.DB.prepare('UPDATE coupons SET type=?,value=?,minimum_cents=?,starts_at=?,expires_at=?,max_uses=?,active=? WHERE id=?')
+       .bind(body.type,body.value,body.minimum_cents||0,body.starts_at||null,body.expires_at||null,body.max_uses??null,flag(body.active),id).run();
+      return json({ok:true,id});
+    }
     const result = await env.DB.prepare(`INSERT INTO coupons(code,type,value,minimum_cents,starts_at,expires_at,max_uses,active)
       VALUES(?,?,?,?,?,?,?,?)`).bind(code, body.type, integer(body.value), integer(body.minimum_cents), body.starts_at || null,
       body.expires_at || null, body.max_uses == null ? null : integer(body.max_uses), flag(body.active)).run();
@@ -419,6 +433,8 @@ async function register(request: Request, env: Env): Promise<Response> {
   const name = body.name?.trim() || "";
   const email = normalizeEmail(body.email || "");
   const password = body.password || "";
+  const cpf=normalizedCpf(body.cpf);
+  if (!cpf) return apiError('Informe um CPF válido.',400,'INVALID_CPF');
   if (name.length < 2 || name.length > 150) return apiError("Informe seu nome completo (até 150 caracteres).");
   if (email.length>254 || !/^\S+@\S+\.\S+$/.test(email)) return apiError("Informe um e-mail válido.");
   if (typeof password !== 'string' || password.length < 12 || password.length > 128) return apiError("Use uma senha entre 12 e 128 caracteres.");
@@ -428,8 +444,8 @@ async function register(request: Request, env: Env): Promise<Response> {
   if (existing) return apiError("Este e-mail já possui cadastro. Entre na conta ou use a recuperação de senha pelo celular cadastrado.", 409, "EMAIL_EXISTS");
   const credentials = await hashPassword(password);
   {
-    const result = await env.DB.prepare(`INSERT INTO customers(name,email,phone,birth_date,password_hash,password_salt,account_claimed)
-      VALUES(?,?,?,?,?,?,1)`).bind(name, email, body.phone?.trim() || null, body.birth_date || null, credentials.hash, credentials.salt).run();
+    const result = await env.DB.prepare(`INSERT INTO customers(name,email,phone,birth_date,password_hash,password_salt,account_claimed,cpf)
+      VALUES(?,?,?,?,?,?,1,?)`).bind(name, email, body.phone?.trim() || null, body.birth_date || null, credentials.hash, credentials.salt,cpf).run();
     customerId = Number(result.meta.last_row_id);
     await env.DB.batch([env.DB.prepare("INSERT INTO carts(customer_id) VALUES (?)").bind(customerId),env.DB.prepare("INSERT INTO loyalty_accounts(customer_id) VALUES (?)").bind(customerId)]);
   }
@@ -446,16 +462,19 @@ async function accountOverview(request: Request, env: Env): Promise<Response> {
     loyaltyOverview(env,customer.id),
     env.DB.prepare("SELECT id FROM orders WHERE customer_id=? AND status IN ('paid','preparing','shipped','delivered','refunded') LIMIT 1").bind(customer.id).first(),
   ]);
-  return json({ ok: true, customer, address: address || null, orders: orders.results, loyalty: loyalty || { purchase_count: 0, rewards_issued: 0 }, first_purchase_eligible: !paid });
+  const profile=await env.DB.prepare('SELECT cpf FROM customers WHERE id=?').bind(customer.id).first<{cpf:string|null}>();
+  return json({ ok: true, customer:{...customer,cpf:profile?.cpf||null}, address: address || null, orders: orders.results, loyalty: loyalty || { purchase_count: 0, rewards_issued: 0 }, first_purchase_eligible: !paid });
 }
 
 async function updateAccount(request: Request, env: Env): Promise<Response> {
   const customer = await currentCustomer(request, env);
   if (!customer || customer.role !== "customer") return apiError("Entre na sua conta para continuar.", 401, "UNAUTHENTICATED");
   const body = await readJson<AccountBody>(request), name = body.name?.trim() || "";
+  const cpf=normalizedCpf(body.cpf);
+  if (!cpf) return apiError('Informe um CPF válido.',400,'INVALID_CPF');
   if (name.length < 2 || name.length > 150 || (body.phone?.length||0)>30) return apiError("Revise nome e telefone.");
   if (body.birth_date && !/^\d{4}-\d{2}-\d{2}$/.test(body.birth_date)) return apiError("Informe uma data de nascimento válida.");
-  await env.DB.prepare("UPDATE customers SET name=?,phone=?,birth_date=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(name, body.phone?.trim() || null, body.birth_date || null, customer.id).run();
+  await env.DB.prepare("UPDATE customers SET name=?,phone=?,birth_date=?,cpf=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(name, body.phone?.trim() || null, body.birth_date || null,cpf, customer.id).run();
   return json({ ok: true });
 }
 
@@ -670,6 +689,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (method === "PUT" && parts[1] === "customers" && parts.length === 3) return updateAdminCustomer(request, env, integer(parts[2]));
     if (method === "GET" && parts[1] === "coupons") return adminCoupons(env);
     if (method === "POST" && parts[1] === "coupons") return saveCoupon(request, env);
+    if (method === "PUT" && parts[1] === "coupons" && /^\d+$/.test(parts[2]||'') && parts.length===3) return saveCoupon(request, env, Number(parts[2]));
   }
   return apiError("Rota não encontrada.", 404, "NOT_FOUND");
 }
