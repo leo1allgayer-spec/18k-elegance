@@ -14,7 +14,7 @@ test('banner photos require admin, validate uploads, keep mobile fallback and re
  const {db,env}=fixture(),{onRequest:banners}=require('../functions/api/admin/banners.ts'),{onRequest:imageRoute}=require('../functions/api/banner-images/[filename].ts');const objects=new Map();
  env.PERSONALIZATION_BUCKET={async put(key,stream,options){objects.set(key,{body:await new Response(stream).arrayBuffer(),httpEtag:'test',writeHttpMetadata(h){h.set('Content-Type',options.httpMetadata.contentType)}})},async get(key){return objects.get(key)||null}};
  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64');
- const upload=(cookie='',bytes=png,variant='desktop',origin='https://elegance18k.com')=>{const form=new FormData();form.set('image',new File([bytes],'banner.png',{type:'image/png'}));return banners({env,request:new Request('https://elegance18k.com/api/admin/banners?slot=1&variant='+variant,{method:'POST',headers:{Origin:origin,Cookie:cookie},body:form})});};
+ const upload=(cookie='',bytes=png,variant='desktop',origin='https://elegance18k.com',slot=1)=>{const form=new FormData();form.set('image',new File([bytes],'banner.png',{type:'image/png'}));return banners({env,request:new Request('https://elegance18k.com/api/admin/banners?slot='+slot+'&variant='+variant,{method:'POST',headers:{Origin:origin,Cookie:cookie},body:form})});};
  try{
   assert.equal((await upload()).status,403);db.exec("UPDATE customers SET role='admin' WHERE id=1");const s=await createSession(env,1);const cookie='elegance_session='+s.token;
   assert.equal((await upload(cookie,png,'desktop','https://evil.test')).status,403);assert.equal((await upload(cookie,Buffer.from('fake'))).status,400);assert.equal((await upload(cookie,png,'other')).status,400);
@@ -22,6 +22,8 @@ test('banner photos require admin, validate uploads, keep mobile fallback and re
   const mobile=await upload(cookie,png,'mobile');const both=(await mobile.json()).banners[0];assert.notEqual(both.desktop,both.mobile);
   const filename=both.mobile.split('/').pop();const image=await imageRoute({env,params:{filename},request:new Request('https://elegance18k.com/api/banner-images/'+filename)});assert.equal(image.status,200);assert.equal(image.headers.get('content-type'),'image/png');
   const reset=await banners({env,request:new Request('https://elegance18k.com/api/admin/banners?slot=1&variant=mobile',{method:'DELETE',headers:{Origin:'https://elegance18k.com',Cookie:cookie}})});const after=(await reset.json()).banners[0];assert.equal(after.mobile,after.desktop);assert.equal(objects.size,2);
+  const catalog=await upload(cookie,png,'desktop','https://elegance18k.com',4);assert.equal(catalog.status,201);const list=(await catalog.json()).banners;assert.equal(list.length,4);assert.equal(list[0].desktop,after.desktop);assert.ok(list[3].desktop_custom);assert.equal(list[3].mobile,list[3].desktop);assert.equal(db.prepare('SELECT COUNT(*) n FROM catalog_banner_images').get().n,1);
+  assert.equal((await upload(cookie,png,'desktop','https://elegance18k.com',5)).status,400);
  }finally{db.close();}
 });
 
@@ -212,6 +214,7 @@ function fixture(){
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0038_product_finishes.sql'),'utf8'));
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0040_customer_order_cpf.sql'),'utf8'));
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0041_banner_images.sql'),'utf8'));
+ db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0042_catalog_banner_images.sql'),'utf8'));
  db.exec(`INSERT INTO customers(id,name,email,phone,password_hash,password_salt,account_claimed) VALUES(1,'Original','owner@example.test','51999990000','unchanged','unchanged',0);
  INSERT INTO loyalty_accounts(customer_id) VALUES(1);
  INSERT INTO products(id,name,slug,sku,price_cents) VALUES(1,'Piece','piece','piece',10000);

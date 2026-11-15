@@ -10,10 +10,11 @@ export const onRequest: PagesFunction<Env> = async ({request,env}) => {
  if(!['POST','DELETE'].includes(request.method))return apiError('Método não permitido.',405);
  const url=new URL(request.url);
  const slot=Number(url.searchParams.get('slot')),variant=url.searchParams.get('variant');
- if(!Number.isInteger(slot)||slot<1||slot>3||!['desktop','mobile'].includes(variant||''))return apiError('Banner inválido.');
+ if(!Number.isInteger(slot)||slot<1||slot>4||!['desktop','mobile'].includes(variant||''))return apiError('Banner inválido.');
  if(request.method==='DELETE'){
   // Keep previous objects recoverable; only reset the current selection.
-  await env.DB.prepare('DELETE FROM banner_images WHERE slot=? AND variant=?').bind(slot,variant).run();
+  if(slot===4)await env.DB.prepare('DELETE FROM catalog_banner_images WHERE variant=?').bind(variant).run();
+  else await env.DB.prepare('DELETE FROM banner_images WHERE slot=? AND variant=?').bind(slot,variant).run();
   return json({ok:true,banners:await bannerImages(env)});
  }
  if(!env.PERSONALIZATION_BUCKET)return apiError('Armazenamento de imagens indisponível.',503);
@@ -23,6 +24,7 @@ export const onRequest: PagesFunction<Env> = async ({request,env}) => {
  const extension=image.type==='image/png'?'png':image.type==='image/webp'?'webp':'jpg';
  const filename=crypto.randomUUID()+'.'+extension;
  await env.PERSONALIZATION_BUCKET.put('banners/'+filename,image.stream(),{httpMetadata:{contentType:image.type,cacheControl:'public, max-age=31536000, immutable'}});
- await env.DB.prepare(`INSERT INTO banner_images(slot,variant,filename) VALUES(?,?,?) ON CONFLICT(slot,variant) DO UPDATE SET filename=excluded.filename,updated_at=CURRENT_TIMESTAMP`).bind(slot,variant,filename).run();
+ if(slot===4)await env.DB.prepare(`INSERT INTO catalog_banner_images(variant,filename) VALUES(?,?) ON CONFLICT(variant) DO UPDATE SET filename=excluded.filename,updated_at=CURRENT_TIMESTAMP`).bind(variant,filename).run();
+ else await env.DB.prepare(`INSERT INTO banner_images(slot,variant,filename) VALUES(?,?,?) ON CONFLICT(slot,variant) DO UPDATE SET filename=excluded.filename,updated_at=CURRENT_TIMESTAMP`).bind(slot,variant,filename).run();
  return json({ok:true,banners:await bannerImages(env)},201);
 };

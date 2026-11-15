@@ -1,7 +1,7 @@
 import type { Env } from './types';
-export const bannerDefaults = ['/assets/hero-mobile.webp','/assets/editorial.jpeg','/assets/hero-elegance-final.jpeg'];
+export const bannerDefaults = ['/assets/hero-mobile.webp','/assets/editorial.jpeg','/assets/hero-elegance-final.jpeg','/assets/hero-wide-2.png'];
 export async function bannerImages(env: Env) {
- const rows=await env.DB.prepare('SELECT slot,variant,filename FROM banner_images').all<{slot:number;variant:string;filename:string}>();
+ const rows=await env.DB.prepare('SELECT slot,variant,filename FROM banner_images UNION ALL SELECT 4 AS slot,variant,filename FROM catalog_banner_images').all<{slot:number;variant:string;filename:string}>();
  return bannerDefaults.map((fallback,index)=>{
   const desktop=rows.results.find(r=>r.slot===index+1&&r.variant==='desktop');
   const mobile=rows.results.find(r=>r.slot===index+1&&r.variant==='mobile');

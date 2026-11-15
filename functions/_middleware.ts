@@ -256,6 +256,13 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   headers.set("Link", `<${seo.canonical}>; rel="canonical"`);
   if (seo.robots?.startsWith("noindex")) headers.set("X-Robots-Tag", seo.robots);
   const rewriter = new HTMLRewriter();
+  if(cleanPath(url.pathname)==='/catalogo'){
+    const banner=(await bannerImages(context.env))[3];
+    if(banner.desktop_custom||banner.mobile_custom)rewriter.on('.catalog-hero',{element(element){
+      element.setAttribute('data-custom-banner','true');
+      element.prepend(`<picture class="catalog-banner-picture" aria-hidden="true"><source media="(max-width: 640px)" srcset="${escapeHtml(banner.mobile)}"><img src="${escapeHtml(banner.desktop)}" alt="" fetchpriority="high"></picture>`,{html:true});
+    }});
+  }
   if(cleanPath(url.pathname)==='/'||cleanPath(url.pathname)==='/index'){
     const banners=await bannerImages(context.env);
     let index=0;

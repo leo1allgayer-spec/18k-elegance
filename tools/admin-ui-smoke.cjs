@@ -4,7 +4,7 @@ const http=require('node:http'),fs=require('node:fs'),path=require('node:path');
 const root=path.resolve(__dirname,'..');
 const product={id:1,name:'Produto de teste',sku:'TEST-1',price_cents:10000,stock:5,active:1,description:'Descrição de teste'};
 const coupon={id:1,code:'TESTE',type:'percent',value:10,minimum_cents:0,uses:0,active:1};
-const banners=[1,2,3].map(slot=>({slot,desktop:'/assets/hero-mobile.webp',mobile:'/assets/hero-mobile.webp',desktop_custom:false,mobile_custom:false}));
+const banners=[1,2,3,4].map(slot=>({slot,desktop:'/assets/hero-mobile.webp',mobile:'/assets/hero-mobile.webp',desktop_custom:false,mobile_custom:false}));
 http.createServer(async(req,res)=>{
  const url=new URL(req.url,'http://127.0.0.1:4191');
  if(url.pathname.startsWith('/api/')){
