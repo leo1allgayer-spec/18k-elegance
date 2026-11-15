@@ -1,5 +1,30 @@
 const {test}=require('node:test');
 
+test('admin binds edit buttons on all pages and opens coupon and product modals',()=>{
+ const vm=require('node:vm'),source=fs.readFileSync(require('node:path').join(__dirname,'../admin-live.js'),'utf8');
+ const coupon={dataset:{editCoupon:'1'}},product={dataset:{editProduct:'2'}},nodes={'#modal-title':{},'#modal-fields':{},'#modal':{hidden:true}};
+ const ctx={state:{coupons:[{id:1}],products:[{id:2}]},$:s=>nodes[s]||null,$$:s=>s==='[data-edit-coupon]'?[coupon]:s==='[data-edit-product]'?[product]:[],couponFields:()=>'<input name="value">',fields:()=>'<textarea name="description"></textarea><input name="image_file">',bindProductImagePreview(){},modalType:'',editingId:null};vm.createContext(ctx);
+ vm.runInContext(source.split(/\r?\n/).find(l=>l.startsWith('function openModal(')),ctx);
+ vm.runInContext(source.split(/\r?\n/).find(l=>l.startsWith('function bind()')),ctx);
+ assert.doesNotThrow(()=>vm.runInContext('bind()',ctx));coupon.onclick();assert.equal(nodes['#modal'].hidden,false);assert.ok(nodes['#modal-fields'].innerHTML.includes('name="value"'));nodes['#modal'].hidden=true;product.onclick();assert.equal(nodes['#modal'].hidden,false);assert.ok(nodes['#modal-fields'].innerHTML.includes('description'));assert.ok(nodes['#modal-fields'].innerHTML.includes('image_file'));
+ ctx.$$=()=>[];assert.doesNotThrow(()=>vm.runInContext('bind()',ctx));
+});
+
+test('banner photos require admin, validate uploads, keep mobile fallback and restore defaults',async()=>{
+ const {db,env}=fixture(),{onRequest:banners}=require('../functions/api/admin/banners.ts'),{onRequest:imageRoute}=require('../functions/api/banner-images/[filename].ts');const objects=new Map();
+ env.PERSONALIZATION_BUCKET={async put(key,stream,options){objects.set(key,{body:await new Response(stream).arrayBuffer(),httpEtag:'test',writeHttpMetadata(h){h.set('Content-Type',options.httpMetadata.contentType)}})},async get(key){return objects.get(key)||null}};
+ const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64');
+ const upload=(cookie='',bytes=png,variant='desktop',origin='https://elegance18k.com')=>{const form=new FormData();form.set('image',new File([bytes],'banner.png',{type:'image/png'}));return banners({env,request:new Request('https://elegance18k.com/api/admin/banners?slot=1&variant='+variant,{method:'POST',headers:{Origin:origin,Cookie:cookie},body:form})});};
+ try{
+  assert.equal((await upload()).status,403);db.exec("UPDATE customers SET role='admin' WHERE id=1");const s=await createSession(env,1);const cookie='elegance_session='+s.token;
+  assert.equal((await upload(cookie,png,'desktop','https://evil.test')).status,403);assert.equal((await upload(cookie,Buffer.from('fake'))).status,400);assert.equal((await upload(cookie,png,'other')).status,400);
+  const desktop=await upload(cookie);assert.equal(desktop.status,201);const first=(await desktop.json()).banners[0];assert.ok(first.desktop_custom);assert.equal(first.desktop,first.mobile);
+  const mobile=await upload(cookie,png,'mobile');const both=(await mobile.json()).banners[0];assert.notEqual(both.desktop,both.mobile);
+  const filename=both.mobile.split('/').pop();const image=await imageRoute({env,params:{filename},request:new Request('https://elegance18k.com/api/banner-images/'+filename)});assert.equal(image.status,200);assert.equal(image.headers.get('content-type'),'image/png');
+  const reset=await banners({env,request:new Request('https://elegance18k.com/api/admin/banners?slot=1&variant=mobile',{method:'DELETE',headers:{Origin:'https://elegance18k.com',Cookie:cookie}})});const after=(await reset.json()).banners[0];assert.equal(after.mobile,after.desktop);assert.equal(objects.size,2);
+ }finally{db.close();}
+});
+
 test('coupon edit form preloads percentage, fixed reais, limits and inactive status',()=>{
  const vm=require('node:vm'),ctx={document:{addEventListener(){}},Intl,Date};vm.createContext(ctx);
  vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../admin-live.js'),'utf8').split('function table(')[0],ctx);
@@ -186,6 +211,7 @@ function fixture(){
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0037_gift_card_sender.sql'),'utf8'));
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0038_product_finishes.sql'),'utf8'));
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0040_customer_order_cpf.sql'),'utf8'));
+ db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0041_banner_images.sql'),'utf8'));
  db.exec(`INSERT INTO customers(id,name,email,phone,password_hash,password_salt,account_claimed) VALUES(1,'Original','owner@example.test','51999990000','unchanged','unchanged',0);
  INSERT INTO loyalty_accounts(customer_id) VALUES(1);
  INSERT INTO products(id,name,slug,sku,price_cents) VALUES(1,'Piece','piece','piece',10000);

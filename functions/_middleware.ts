@@ -1,6 +1,7 @@
 import type { Env } from "./_lib/types";
 import { protectRequest } from "./_lib/request-security";
 import { privatePath, securityHeaders } from "./_lib/security-headers";
+import { bannerImages } from './_lib/banners';
 
 const LEGACY_HOST = "site-18-kelegance.pages.dev";
 const PRIMARY_ORIGIN = "https://elegance18k.com";
@@ -254,7 +255,20 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   headers.set('Cache-Control','no-store');
   headers.set("Link", `<${seo.canonical}>; rel="canonical"`);
   if (seo.robots?.startsWith("noindex")) headers.set("X-Robots-Tag", seo.robots);
-  const transformed = new HTMLRewriter()
+  const rewriter = new HTMLRewriter();
+  if(cleanPath(url.pathname)==='/'||cleanPath(url.pathname)==='/index'){
+    const banners=await bannerImages(context.env);
+    let index=0;
+    rewriter.on('.hero-slide',{element(element){
+      const banner=banners[index++];if(!banner)return;
+      if(!banner.desktop_custom&&!banner.mobile_custom)return;
+      element.removeAttribute('data-slide-image');
+      if(banner.desktop_custom||banner.mobile_custom)element.setAttribute('data-custom-banner','true');
+      element.setInnerContent(`<picture><source media="(max-width: 640px)" srcset="${escapeHtml(banner.mobile)}"><img src="${escapeHtml(banner.desktop)}" alt="" ${index===1?'fetchpriority="high"':'loading="lazy"'}></picture>`,{html:true});
+    }});
+    if(banners[0].desktop_custom||banners[0].mobile_custom)rewriter.on('link[rel="preload"][as="image"]',{element(element){element.remove();}});
+  }
+  const transformed = rewriter
     .on('head', {element(element) {
       if (marketingPage) element.append('<link rel="stylesheet" href="/marketing.css?v=20261109"><script defer src="/marketing.js?v=20261109"></script>',{html:true});
     }})
