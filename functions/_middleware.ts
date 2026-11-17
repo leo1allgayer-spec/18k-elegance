@@ -179,7 +179,7 @@ async function resolveSeo(url: URL, env: Env): Promise<SeoData> {
       logo: `${PRIMARY_ORIGIN}/assets/logo-oficial.png`,
       image: DEFAULT_IMAGE,
       telephone: "+55 51 9492-7676",
-      sameAs: ["https://www.instagram.com/elegance__18k/"],
+      sameAs: ["https://www.instagram.com/elegance___18k/"],
       currenciesAccepted: "BRL",
       paymentAccepted: "Pix, Cartão de crédito",
     });
