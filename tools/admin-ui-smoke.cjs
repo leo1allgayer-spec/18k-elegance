@@ -17,6 +17,7 @@ http.createServer(async(req,res)=>{
    '/api/admin/coupons':{coupons:[coupon]},'/api/admin/integrations/bling/status':{},
    '/api/admin/shipping/origin':{origin:{}},'/api/admin/loyalty':{participants:[]},
    '/api/shipping/motoboy':{rates:[]},'/api/admin/marketing':{settings:{}},'/api/admin/banners':{banners}
+   ,'/api/admin/storefront-controls':{settings:{instagram_handle:'elegance___18k',labels:{add_cart:'Adicionar à sacola',category_all:'Todos'}}}
   };
   if(req.method==='PUT'&&url.pathname==='/api/admin/coupons/1')Object.assign(coupon,JSON.parse(body));
   if(req.method==='PUT'&&url.pathname==='/api/admin/products/1')Object.assign(product,JSON.parse(body));

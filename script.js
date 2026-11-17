@@ -266,9 +266,10 @@ document.querySelector(".add-cart")?.addEventListener("click", (event) => {
     product_id: Number(button.dataset.id) || null, variant_id: Number(button.dataset.variant) || null, personalization });
   localStorage.removeItem("elegance-coupon");
   saveCart(cart);
-  button.textContent = "Adicionado à sacola ✓";
+  button.dataset.uiState='added';
+  button.textContent = window.eleganceUi?.label('added_cart',"Adicionado à sacola ✓")||"Adicionado à sacola ✓";
   document.dispatchEvent(new CustomEvent('elegance:cart-added'));
-  setTimeout(() => { button.textContent = "Adicionar à sacola"; }, 1800);
+  setTimeout(() => { delete button.dataset.uiState;button.textContent = window.eleganceUi?.label('add_cart',"Adicionar à sacola")||"Adicionar à sacola"; }, 1800);
 });
 
 if ("IntersectionObserver" in window) {

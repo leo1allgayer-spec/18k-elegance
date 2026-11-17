@@ -1,5 +1,25 @@
 const {test}=require('node:test');
 
+test('storefront controls require admin, validate text and preserve safe defaults',async()=>{
+ const {db,env}=fixture(),{onRequest:admin}=require('../functions/api/admin/storefront-controls.ts'),{onRequest:publicControls}=require('../functions/api/storefront-controls.ts');
+ const make=(body,cookie='')=>admin({env,request:new Request('https://elegance18k.com/api/admin/storefront-controls',{method:'PUT',headers:{Origin:'https://elegance18k.com','Content-Type':'application/json',Cookie:cookie},body:JSON.stringify(body)})});
+ try{const body={instagram_handle:'elegance___18k',labels:{add_cart:'Comprar esta peça',category_all:'Todas as peças'}};assert.equal((await make(body)).status,403);db.exec("UPDATE customers SET role='admin' WHERE id=1");const s=await createSession(env,1),cookie='elegance_session='+s.token;
+  assert.equal((await make(body,cookie)).status,200);
+  for(const value of [{...body,instagram_handle:'https://evil.test/'},{...body,labels:{add_cart:'<script>alert(1)</script>'}},{...body,labels:{add_cart:'x'.repeat(61)}},{...body,labels:{checkout_url:'https://evil.test'}}])assert.equal((await make(value,cookie)).status,400);
+  const response=await publicControls({env,request:new Request('https://elegance18k.com/api/storefront-controls')});const settings=(await response.json()).settings;assert.equal(settings.labels.add_cart,'Comprar esta peça');assert.equal(settings.labels.category_all,'Todas as peças');assert.equal(settings.instagram_handle,'elegance___18k');assert.ok(settings.labels.checkout);
+  assert.equal((await make({...body,labels:{add_cart:''}},cookie)).status,200);const result=await publicControls({env,request:new Request('https://elegance18k.com/api/storefront-controls')});assert.equal((await result.json()).settings.labels.add_cart,'Adicionar à sacola');
+ }finally{db.close();}
+});
+
+test('storefront labels update dynamic controls without removing product arrow or changing checkout links',async()=>{
+ const vm=require('node:vm'),source=fs.readFileSync(require('node:path').join(__dirname,'../storefront-controls.js'),'utf8');
+ const text={nodeType:3,textContent:'Adicionar à sacola '},arrow={nodeType:1,textContent:'→'},add={disabled:false,dataset:{},childNodes:[text,arrow],children:[arrow]},category={textContent:'Todos'},checkoutLink={textContent:'Continuar para entrega',href:'checkout.html'},instagram={href:'https://www.instagram.com/elegance__18k/',classList:{contains:()=>false}},heading={textContent:'@elegance__18k'};
+ const selections={'.add-cart':[add],'.category-tabs>a:not([href*="categoria="])':[category],'.checkout-button':[checkoutLink],'a[href*="instagram.com/"]':[instagram]};let update;
+ const document={body:{},querySelectorAll:s=>selections[s]||[],querySelector:s=>s==='.instagram>h2'?heading:null};const ctx={document,location:{pathname:'/produto'},queueMicrotask,MutationObserver:class{constructor(callback){update=callback}observe(){}},fetch:async()=>Response.json({settings:{instagram_handle:'elegance___18k',labels:{add_cart:'Comprar esta peça',added_cart:'Peça adicionada',category_all:'Todas',checkout:'Ir para entrega'}}})};ctx.window=ctx;
+ await vm.runInNewContext(source,ctx);assert.equal(text.textContent,'Comprar esta peça ');assert.equal(arrow.textContent,'→');assert.equal(category.textContent,'Todas');assert.equal(checkoutLink.href,'checkout.html');assert.equal(instagram.href,'https://www.instagram.com/elegance___18k/');assert.equal(heading.textContent,'@elegance___18k');
+ add.dataset.uiState='added';update();await new Promise(r=>setImmediate(r));assert.equal(text.textContent,'Peça adicionada ');
+});
+
 test('admin binds edit buttons on all pages and opens coupon and product modals',()=>{
  const vm=require('node:vm'),source=fs.readFileSync(require('node:path').join(__dirname,'../admin-live.js'),'utf8');
  const coupon={dataset:{editCoupon:'1'}},product={dataset:{editProduct:'2'}},nodes={'#modal-title':{},'#modal-fields':{},'#modal':{hidden:true}};
@@ -215,6 +235,7 @@ function fixture(){
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0040_customer_order_cpf.sql'),'utf8'));
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0041_banner_images.sql'),'utf8'));
  db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0042_catalog_banner_images.sql'),'utf8'));
+ db.exec(fs.readFileSync(require('node:path').join(__dirname,'../migrations/0043_storefront_controls.sql'),'utf8'));
  db.exec(`INSERT INTO customers(id,name,email,phone,password_hash,password_salt,account_claimed) VALUES(1,'Original','owner@example.test','51999990000','unchanged','unchanged',0);
  INSERT INTO loyalty_accounts(customer_id) VALUES(1);
  INSERT INTO products(id,name,slug,sku,price_cents) VALUES(1,'Piece','piece','piece',10000);

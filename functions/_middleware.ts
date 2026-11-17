@@ -277,6 +277,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   }
   const transformed = rewriter
     .on('head', {element(element) {
+      if(!/^\/(admin|api)(?:[-/.]|$)/.test(url.pathname))element.append('<script defer src="/storefront-controls.js?v=20261116"></script>',{html:true});
       if (marketingPage) element.append('<link rel="stylesheet" href="/marketing.css?v=20261109"><script defer src="/marketing.js?v=20261109"></script>',{html:true});
     }})
     .on("title", new SetTitle(seo.title))
